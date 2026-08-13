@@ -27,8 +27,9 @@ TokTickIT is the CPE334 Lab 1 IT service-desk starter. This first increment esta
 
        npm run db:up
 
-5. Generate the Prisma client:
+5. Create the initial database table and generate the Prisma client:
 
+       npm run prisma:migrate --workspace server
        npm run prisma:generate --workspace server
 
 6. Start the application:
