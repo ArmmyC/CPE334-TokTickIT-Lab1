@@ -1,0 +1,22 @@
+# Lab 1 AI Use and Reflection
+
+I used OpenAI Codex (GPT-5) as an AI coding assistant. I reviewed the generated requirements, files, commands, tests, and GitHub changes before accepting them. I remained responsible for understanding the labsheet and for the final repository.
+
+## Selected key prompts
+
+The prompts below are representative reconstructions of the main prompts used during the work. They are written in full so that the implementation decisions and constraints are clear.
+
+| Stage | Prompt used | Reflection |
+| --- | --- | --- |
+| Understand the labsheet | "Read Lab 1 and understand what we have to build. Summarize the required technology stack, four Issues, branch names, endpoints, tests, GitHub workflow, and submission evidence. Do not write code yet." | Starting with the requirements made the implementation order clear and prevented unrelated features from being added. |
+| Plan the workflow | "Read the labsheet again and give me a detailed step-by-step plan for the GitHub repository, main branch, lab1-staging branch, Project board, Issues, feature branches, Pull Requests, peer reviews, and final staging-to-main release." | This exposed that the Project and all four Issues had to exist before implementation. |
+| Rebuild the repository | "Delete the old Lab 1 repository and recreate it cleanly. Initialize main and lab1-staging, then create the Project named TokTickIT Individual Sprints with the exact Board statuses Backlog, Specified, Started, PR Review, Fixing, and Done." | Rebuilding from a clean initial commit made the branch history match the required sequence. |
+| Create the Issues | "Create all four labsheet Issues before coding. Use the exact required branch names and acceptance criteria. Add every Issue to the Project in Backlog, move only understood work to Specified, and move only the active Issue to Started." | Writing the acceptance criteria first gave each later Pull Request a clear boundary. |
+| Implement Issue 1 | "Implement only Issue 1 on feature/1-project-foundation. Set up React, TypeScript, Vite, Bootstrap, Express, TypeScript, Prisma, PostgreSQL configuration, Vitest, Supertest, .gitignore, .env.example, README setup instructions, and the Lab 1 documentation files. Do not implement the health endpoint or category feature yet." | The explicit scope kept the first Pull Request focused on the project foundation. |
+| Check the foundation | "Compare the foundation branch with Issue 1 and the labsheet line by line. Check that Prisma is actually initialized with a PostgreSQL datasource, that the migration exists, that secrets are ignored, and that the build and tests can run." | This follow-up caught that listing Prisma as a dependency was not enough; the schema and migration had to be added before review. |
+| Validate locally | "Run the repository build, both workspace test commands, and a whitespace check. If anything fails, explain the cause and fix only the foundation branch." | Running the checks before opening the Pull Request produced concrete evidence for the reviewer. |
+| Prepare peer review | "Update ai_use.md and reviewer.md with the current student and reviewer details, open the foundation Pull Request into lab1-staging, request Bank848 as reviewer, and stop until the peer review is complete." | Stopping at the review checkpoint preserves the required workflow and gives the peer a stable commit to inspect. |
+
+## Reflection
+
+The most useful prompts were specific about scope, acceptance criteria, branch names, and what must not be implemented yet. When the first foundation check showed that Prisma had only been listed in package metadata, I followed up with a narrower acceptance-criteria review and added the actual schema, migration, and Prisma client setup. This showed me that AI-generated work still needs to be compared with the labsheet, especially for workflow and evidence requirements.
