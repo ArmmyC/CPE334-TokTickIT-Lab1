@@ -11,7 +11,7 @@
 
 | PR | Branch | Target | Reviewer | Status |
 | --- | --- | --- | --- | --- |
-| #5 | feature/1-project-foundation | lab1-staging | Bank848 | Collaborator invitation sent; formal review request pending acceptance |
+| [#5](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/5) | feature/1-project-foundation | lab1-staging | Bank848 | Review requested; awaiting peer review |
 | #2 | feature/2-health-check | lab1-staging | Bank848 | Planned |
 | #3 | feature/3-category-seed | lab1-staging | Bank848 | Planned |
 | #4 | feature/4-category-list | lab1-staging | Bank848 | Planned |
