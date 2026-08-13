@@ -2,14 +2,14 @@
 
 ## Student information
 
-- Name: Sitthichai Phirompan
-- Student ID: 67070501074
+- Name: Kamolpop Vitayarat
+- Student ID: 67070501002
 - GitHub username: [@ArmmyC](https://github.com/ArmmyC)
 
 ## Peer reviewer
 
-- Name: Bank848
-- Student ID: To be confirmed with the peer
+- Name: Sitthichai Phirompan
+- Student ID: 67070501074
 - GitHub username: [@Bank848](https://github.com/Bank848)
 
 ## Repository and workflow
