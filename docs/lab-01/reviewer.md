@@ -26,8 +26,8 @@
 | Issue | Pull Request | Branch | Target | Reviewer | Status |
 | --- | --- | --- | --- | --- | --- |
 | 1. Project foundation | [PR #5](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/5) | feature/1-project-foundation | lab1-staging | Bank848, MacOverlorD | Approved and merged into lab1-staging |
-| 2. API health check | [PR #6](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/6) | feature/2-health-check | lab1-staging | Bank848, MacOverlorD | Review requested; awaiting peer reviews |
-| 3. Category seed | Not created yet | feature/3-category-seed | lab1-staging | Bank848, MacOverlorD | Planned after the Issue #2 review checkpoint |
+| 2. API health check | [PR #6](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/6) | feature/2-health-check | lab1-staging | Bank848, MacOverlorD | Approved and merged into lab1-staging |
+| 3. Category seed | [PR #7](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/7) | feature/3-category-seed | lab1-staging | Bank848, MacOverlorD | Approved; conflict resolution pushed; awaiting merge |
 | 4. Category list | Not created yet | feature/4-category-list | lab1-staging | Bank848, MacOverlorD | Planned after the category seed is reviewed and merged |
 
 Review comments, requested changes, approvals, and response commits will be recorded here after each peer review. Any requested changes will be made on the same feature branch and submitted for review again.
