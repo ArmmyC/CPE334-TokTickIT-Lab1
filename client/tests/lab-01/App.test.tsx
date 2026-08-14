@@ -6,35 +6,81 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('TokTickIT health UI', () => {
-  it('renders the application name', async () => {
+describe('TokTickIT health and category UI', () => {
+  const categories = [
+    { id: 1, name: 'Account and Access' },
+    { id: 2, name: 'Hardware' },
+    { id: 3, name: 'Software' },
+    { id: 4, name: 'Network' },
+  ];
+
+  const stubSuccessfulApi = () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ status: 'ok', service: 'TokTickIT API' }),
-      }),
+      vi.fn((url: string) =>
+        Promise.resolve({
+          ok: true,
+          json: async () =>
+            url.endsWith('/categories')
+              ? categories
+              : { status: 'ok', service: 'TokTickIT API' },
+        }),
+      ),
     );
+  };
+
+  it('renders the application name and API categories', async () => {
+    stubSuccessfulApi();
 
     render(<App />);
 
     expect(screen.getByRole('heading', { name: 'TokTickIT' })).toBeInTheDocument();
     expect(await screen.findByText('System Status: Online')).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Request categories' })).toBeInTheDocument();
+    expect(screen.getByText('Account and Access')).toBeInTheDocument();
+    expect(screen.getByText('Network')).toBeInTheDocument();
   });
 
-  it('shows an online status from a successful health response', async () => {
+  it('shows a loading state while categories are being requested', async () => {
+    let resolveCategories!: (value: unknown) => void;
+    const categoriesResponse = new Promise((resolve) => {
+      resolveCategories = resolve;
+    });
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ status: 'ok', service: 'TokTickIT API' }),
-      }),
+      vi.fn((url: string) =>
+        url.endsWith('/categories')
+          ? categoriesResponse
+          : Promise.resolve({
+              ok: true,
+              json: async () => ({ status: 'ok', service: 'TokTickIT API' }),
+            }),
+      ),
     );
 
     render(<App />);
 
-    expect(await screen.findByText('System Status: Online')).toBeInTheDocument();
-    expect(screen.getByText('The backend is responding normally.')).toBeInTheDocument();
+    expect(screen.getByText(/Loading request categories/)).toBeInTheDocument();
+    resolveCategories({ ok: true, json: async () => categories });
+    expect(await screen.findByText('Categories loaded from the API.')).toBeInTheDocument();
+  });
+
+  it('shows a category error when the category API is unavailable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url.endsWith('/categories')
+          ? Promise.reject(new Error('connection refused'))
+          : Promise.resolve({
+              ok: true,
+              json: async () => ({ status: 'ok', service: 'TokTickIT API' }),
+            }),
+      ),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Unable to load request categories/);
   });
 
   it('shows a useful message when the backend is unavailable', async () => {
