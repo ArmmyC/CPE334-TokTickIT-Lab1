@@ -32,11 +32,17 @@ TokTickIT is the CPE334 Lab 1 IT service-desk starter. This first increment esta
        npm run prisma:migrate --workspace server
        npm run prisma:generate --workspace server
 
-6. Start the application:
+6. Seed the four supported request categories:
+
+       npm run db:seed
+
+7. Start the application:
 
        npm run dev
 
 The Vite frontend runs at http://localhost:5183 and the Express server runs at http://localhost:4000.
+
+The API exposes `GET /api/categories`, which returns the seeded category IDs and names ordered by ascending ID. The web page loads this endpoint and displays loading, success, and error states.
 
 ## Tests and build
 
