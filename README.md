@@ -42,7 +42,7 @@ TokTickIT is the CPE334 Lab 1 IT service-desk starter. This first increment esta
 
 The Vite frontend runs at http://localhost:5183 and the Express server runs at http://localhost:4000.
 
-The API exposes `GET /api/categories`, which returns the seeded category IDs and names ordered by ascending ID. The web page loads this endpoint and displays loading, success, and error states.
+The web page displays a `Check System` button. Clicking it calls `GET /api/health` and `GET /api/categories`; the page then shows the backend status and the seeded category IDs and names in ascending ID order. Loading, success, and useful error states are displayed while the requests run.
 
 ## Tests and build
 
