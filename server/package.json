@@ -1,0 +1,38 @@
+{
+  "name": "@toktickit/server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/src/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prisma:generate": "dotenv -e ../.env -- prisma generate",
+    "prisma:migrate": "dotenv -e ../.env -- prisma migrate dev --name lab_01_foundation",
+    "prisma:deploy": "dotenv -e ../.env -- prisma migrate deploy",
+    "prisma:seed": "dotenv -e ../.env -- prisma db seed",
+    "prisma:reset": "dotenv -e ../.env -- prisma migrate reset --force"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.15.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/supertest": "^6.0.3",
+    "prisma": "^6.15.0",
+    "supertest": "^7.1.4",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
