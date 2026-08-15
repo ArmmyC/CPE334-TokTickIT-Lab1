@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/App';
 
@@ -34,11 +34,13 @@ describe('TokTickIT health and category UI', () => {
 
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'TokTickIT' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'TokTickIT IT Service Desk' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Check System' }));
     expect(await screen.findByText('System Status: Online')).toBeInTheDocument();
     expect(await screen.findByRole('list', { name: 'Request categories' })).toBeInTheDocument();
     expect(screen.getByText('Account and Access')).toBeInTheDocument();
     expect(screen.getByText('Network')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check System' })).toBeInTheDocument();
   });
 
   it('shows a loading state while categories are being requested', async () => {
@@ -60,6 +62,7 @@ describe('TokTickIT health and category UI', () => {
 
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Check System' }));
     expect(screen.getByText(/Loading request categories/)).toBeInTheDocument();
     resolveCategories({ ok: true, json: async () => categories });
     expect(await screen.findByText('Categories loaded from the API.')).toBeInTheDocument();
@@ -80,6 +83,7 @@ describe('TokTickIT health and category UI', () => {
 
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Check System' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/Unable to load request categories/);
   });
 
@@ -88,6 +92,7 @@ describe('TokTickIT health and category UI', () => {
 
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Check System' }));
     expect(await screen.findByText('System Status: Offline')).toBeInTheDocument();
     expect(screen.getByText(/Unable to reach the TokTickIT API/)).toBeInTheDocument();
   });
