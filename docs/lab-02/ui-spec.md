@@ -31,6 +31,8 @@
 - The active page is visually indicated and also communicated to assistive technology.
 - Mobile navigation collapses into a touch-friendly menu without horizontal overflow.
 - The Development Requester notice states that the selector is for Lab 2 testing and is not a login/authentication system.
+- Routes are `/select-requester`, `/tickets`, `/tickets/new`, and `/tickets/:ticketId`. Ticket routes redirect to the selector when `toktickit.developmentRequesterId` is absent or invalid.
+- The desktop header places product identity first, primary navigation next, and Requester identity/actions at the end. Below 768 px, a labelled menu button reveals the same links and actions in document order.
 
 ## 4. Shared control rules
 
@@ -43,6 +45,7 @@
 - Error messages appear beside the related field or control, not only in a generic page alert.
 - Success messages include a clear next action and the generated Ticket Number.
 - Badges use both text and visual styling, never color alone.
+- Primary buttons use solid primary green; secondary buttons use a white surface with green border; tertiary actions appear as accessible text links; destructive actions use dark red; disabled buttons reduce emphasis without failing contrast; busy buttons retain their width and replace or prefix their label with a status indicator.
 
 ## 5. Requester Selection screen
 
@@ -58,9 +61,13 @@ Required content:
 
 Continue is disabled until a valid active Requester is selected. A successful selection is stored in session storage and opens the application shell.
 
+The screen uses one centered card no wider than 640 px. The explanation appears before the labelled select. Loading replaces the select with a status message; empty and failure states retain a retry action. Continue is the primary action and Cancel is not shown because no authenticated application context exists yet.
+
 ## 6. Create Ticket screen
 
 Group system-generated/read-only values separately from editable fields. The screen includes Requester, Category, Related System, Summary, Requested Priority, Description, Attachments, and the primary submit action.
+
+Desktop uses a two-column card: Requester and the post-success Ticket Number/Date occupy the top read-only row; Category/Related System and Requested Priority occupy the classification grid; Summary and Description span the full width; Attachments form the final full-width section. Tablet keeps two columns only for compact selects. Mobile stacks every field and action. Submit Ticket is primary; Clear Form is secondary and requires confirmation only when entered data would be lost.
 
 Required states:
 
@@ -72,6 +79,8 @@ Required states:
 - API failure with form values preserved.
 
 The Requester is shown as read-only context. Ticket Number and Ticket Date are read-only system values after creation. Description has enough width and height for meaningful input.
+
+Each selected attachment row shows filename, type, human-readable size, validation state, and a Remove selection action. Selection never uploads before the Ticket succeeds. The success panel contains the official Ticket Number plus View Ticket and Go to My Tickets actions. Partial attachment failure keeps the success panel and lists each failed filename separately.
 
 ## 7. My Tickets screen
 
@@ -93,9 +102,13 @@ Required states:
 - No results when filters/search match nothing.
 - Safe API failure.
 
+Desktop controls appear in this order: search; Category, Related System, Requested Priority, and Current Status filters; sort field/direction; Clear Filters; result summary; table; pagination. Changing search/filter/sort resets to page 1. The mobile representation uses the same controls followed by cards; no data is hidden solely because of viewport size. Clicking a row/card or its explicit View Ticket action opens `/tickets/:ticketId`.
+
 ## 8. Ticket Detail screen
 
 Ticket information is read-only. Attachment actions are visually separated from the Ticket information.
+
+The detail header shows Ticket Number, Ticket Date, Current Status, Requested Priority, nullable IT Priority (`Not assigned`), and Back to My Tickets. The information card groups Requester, Category, Related System, Summary, and Description. Attachment metadata is a separate section below it. Desktop may use a two-column metadata grid; tablet/mobile use one column for long values.
 
 Required attachment states:
 
@@ -108,6 +121,8 @@ Required attachment states:
 - Removal confirmation with a required reason.
 
 Do not display or implement comments, Internal Notes, Actions Taken, IT Staff controls, or later status workflow.
+
+Active image/PDF rows offer Preview and Download; other active permitted files offer Download. Removal opens a labelled dialog containing the filename, warning text, required reason field, Cancel, and destructive Remove Attachment action. Removed rows retain filename, type, size, removal date, and reason, use a text-labelled Removed badge, and expose no content action.
 
 ## 9. Responsive rules
 
@@ -128,6 +143,10 @@ All sizes must avoid clipped labels, overlapping messages, hidden buttons, unrea
 - Color is never the only status indicator.
 - Disabled and busy states are communicated to assistive technology.
 - Touch targets remain usable on mobile.
+- Page titles receive focus after route changes without causing unexpected scrolling.
+- Dialog focus is trapped while open, Escape cancels, and focus returns to the invoking control.
+- Table headers identify their columns; mobile cards use visible field labels rather than relying on column order.
+- Validation summaries may supplement field errors but never replace `aria-describedby` links to the exact message.
 
 ## 11. Visual checklist and evidence paths
 
@@ -145,3 +164,5 @@ Screenshot paths:
 - `artifacts/lab-02/screenshots/create-ticket/`
 - `artifacts/lab-02/screenshots/my-tickets/`
 - `artifacts/lab-02/screenshots/ticket-detail/`
+
+Required reference viewports are desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`. Create Ticket evidence additionally captures initial, validation, submitting, success, safe API failure with retained values, and invalid attachment states. My Tickets evidence captures populated, empty, no-results, filtered/sorted/paginated, and switched-Requester states. Ticket Detail evidence captures owned detail, active upload/download/preview, soft removal with reason, retained removed metadata, and rejected foreign access.

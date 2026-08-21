@@ -94,6 +94,11 @@ The Development Requester selector simulates a current user only for Lab 2 testi
 - BR-35: Invalid query values are rejected with a safe validation response rather than silently changing the requested query.
 - BR-36: API errors use safe user-facing messages and never expose stack traces, database details, or local storage paths.
 - BR-37: Lab 3 may replace the explicit requester context with authenticated identity while preserving Ticket ownership relationships.
+- BR-38: IT Priority is nullable and read-only in Lab 2. The UI displays `Not assigned` until a later IT Staff workflow sets it.
+- BR-39: A trimmed blank search value is treated as no search. A non-blank search is limited to 120 characters.
+- BR-40: Requesting a valid page beyond the final page returns an empty `items` array with the requested page and accurate totals; it is not an error.
+- BR-41: Initial attachments are uploaded one at a time after the Ticket transaction succeeds. The Ticket and successful uploads remain when a later file fails, and every failed file is reported.
+- BR-42: Active image and PDF content may be previewed only through the ownership-checked Attachment content endpoint. Removed content returns the same safe `404` used for missing or foreign resources.
 
 ## 6. UI Specification Summary
 
@@ -109,16 +114,23 @@ Required screens and states:
 
 ## 7. Data Changes
 
-The existing `Category` model remains and gains an `isActive` flag defaulting to true. The following Prisma models are added:
+The migration preserves all Lab 1 `Category` rows and adds `isActive Boolean @default(true)` plus the reverse Tickets relation. PostgreSQL enum names are `RequestedPriority`, `TicketPriority`, and `TicketStatus`.
 
-- `RelatedSystem`: unique name, active flag, timestamps, and Tickets relation.
-- `DevelopmentRequester`: name, unique email, active flag, timestamps, and Tickets relation.
-- `Ticket`: unique Ticket Number, Ticket Date, requester/category/system foreign keys, Summary, Description, Requested Priority, Current Status, and timestamps.
-- `Attachment`: Ticket foreign key, original name, generated storage key, MIME type, byte size, upload timestamp, nullable removal timestamp, and nullable removal reason.
+| Model | Exact fields and constraints |
+| --- | --- |
+| `Category` | `id Int @id @default(autoincrement())`; `name String @unique @db.VarChar(100)`; `isActive Boolean @default(true)`; `createdAt DateTime @default(now())`; `tickets Ticket[]` |
+| `RelatedSystem` | `id Int @id @default(autoincrement())`; `name String @unique @db.VarChar(100)`; `isActive Boolean @default(true)`; `createdAt DateTime @default(now())`; `updatedAt DateTime @updatedAt`; `tickets Ticket[]` |
+| `DevelopmentRequester` | `id Int @id @default(autoincrement())`; `name String @db.VarChar(120)`; `email String @unique @db.VarChar(254)`; `isActive Boolean @default(true)`; `createdAt DateTime @default(now())`; `updatedAt DateTime @updatedAt`; `tickets Ticket[]` |
+| `Ticket` | `id Int @id @default(autoincrement())`; `ticketNumber String @unique @db.VarChar(32)`; `ticketDate DateTime @default(now())`; `requesterId Int`; `categoryId Int`; `relatedSystemId Int`; `summary String @db.VarChar(120)`; `description String @db.Text`; `requestedPriority RequestedPriority`; `itPriority TicketPriority?`; `currentStatus TicketStatus @default(NEW)`; `createdAt DateTime @default(now())`; `updatedAt DateTime @updatedAt`; required Requester/Category/RelatedSystem relations; `attachments Attachment[]` |
+| `Attachment` | `id Int @id @default(autoincrement())`; `ticketId Int`; `originalName String @db.VarChar(255)`; `storageKey String @unique @db.VarChar(100)`; `mimeType String @db.VarChar(100)`; `sizeBytes Int`; `uploadedAt DateTime @default(now())`; `removedAt DateTime?`; `removalReason String? @db.VarChar(500)` |
 
-Required relationships are one Requester to many Tickets, one Ticket to one Requester, one Ticket to many Attachments, one Category to many Tickets, and one Related System to many Tickets.
+`RequestedPriority` and `TicketPriority` contain `LOW`, `MEDIUM`, `HIGH`, and `URGENT`. `TicketStatus` contains only `NEW` in Lab 2. `itPriority` is intentionally nullable so later IT Staff work can set it without changing the requester contract.
 
-Required indexes include unique Ticket Number, unique reference-data names/emails, Ticket requester plus updated date, Ticket search/filter fields where justified, and Attachment Ticket plus removal state. The migration must preserve existing Lab 1 Category data and make the new active flag default true.
+Foreign keys are required and use `onDelete: Restrict` for Requester, Category, and Related System. Attachment uses `onDelete: Cascade` because its metadata has no meaning without its Ticket; Lab 2 provides no Ticket deletion endpoint. Required indexes are `Ticket(requesterId, updatedAt, id)`, `Ticket(categoryId)`, `Ticket(relatedSystemId)`, `Ticket(requestedPriority)`, `Ticket(currentStatus)`, and `Attachment(ticketId, removedAt)`.
+
+The backend creates a Ticket with a unique internal placeholder inside one Prisma transaction, derives `TKT-<UTC year>-<id padded to at least six digits>` from the persisted id, updates the same row, and returns only the final value. Attachment bytes use a UUID storage key under `server/storage/attachments/`; the original filename is metadata and is never used as a path.
+
+The repeatable seed upserts the four fixed Categories, seven Related Systems (`Email`, `Campus Wi-Fi`, `VPN`, `LEB2 App`, `Grade Submission App`, `Printer`, and `Corporate Laptop`), and these Requesters by unique email: active `Ariya Anderson <ariya@example.test>`, `Narin Chai <narin@example.test>`, `Pimchanok Dee <pimchanok@example.test>`, and `Kittipong Saelim <kittipong@example.test>`; inactive `Mali Boonmee <mali@example.test>`.
 
 ## 8. API Contract Summary
 
@@ -159,6 +171,8 @@ Success responses use 200 for retrieval, 201 for creation/upload, and 200 for a 
 - AC-16: Given a removed Attachment, when preview or download is requested, then access is rejected.
 - AC-17: Given a mobile, tablet, or desktop viewport, when each screen is used, then controls remain readable with no clipping, overlap, or horizontal page scrolling.
 - AC-18: Given the complete requester flow, when the E2E test runs, then creation, ownership, list, detail, and attachment behavior are traceable and passing.
+- AC-19: Given a valid list query beyond the final page or with a blank search, when it is executed, then the API returns deterministic metadata without leaking other Requesters' data.
+- AC-20: Given an owned active image or PDF Attachment, when preview or download is requested, then the server uses the requested safe disposition; removed or foreign content returns `404`.
 
 ## 10. Definition of Done
 
@@ -184,4 +198,6 @@ Success responses use 200 for retrieval, 201 for creation/upload, and 200 for a 
 - Bank848 is the sole peer reviewer for Lab 2 and has permission to merge.
 - Local attachment storage is appropriate for this educational sprint; storage is ignored by Git and accessed only through ownership-checked API endpoints.
 - Session storage is appropriate for a temporary requester context because it ends with the browser session and is not treated as security.
-- Validation and API decisions in this document are explicit Lab 2 engineering choices and must be reviewed by the student before coding continues.
+- React Router provides guarded, deep-linkable Lab 2 screen routes.
+- E2E tests use a dedicated PostgreSQL test database on host port 5434 so their reset never touches development data.
+- The student reviewed and approved the validation, pagination, routing, local-storage, test-database, UI, and API decisions in this contract on 2026-08-21 before product coding continued.
