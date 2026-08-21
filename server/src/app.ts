@@ -16,7 +16,26 @@ export type CategoryApiDatabase = {
   };
 };
 
-export function createApp(database: CategoryApiDatabase = prisma) {
+export type DevelopmentRequesterRecord = {
+  id: number;
+  name: string;
+  email: string;
+};
+
+export type DevelopmentRequesterApiDatabase = {
+  developmentRequester: {
+    findMany(args: {
+      where: { isActive: true };
+      select: { id: true; name: true; email: true };
+      orderBy: { name: 'asc' };
+    }): Promise<DevelopmentRequesterRecord[]>;
+  };
+};
+
+export type ApplicationApiDatabase = CategoryApiDatabase &
+  Partial<DevelopmentRequesterApiDatabase>;
+
+export function createApp(database: ApplicationApiDatabase = prisma) {
   const app = express();
 
   app.use(cors());
@@ -46,6 +65,35 @@ export function createApp(database: CategoryApiDatabase = prisma) {
       console.error('TokTickIT categories API error:', error);
       response.status(500).json({
         error: 'Unable to load categories.',
+      });
+    }
+  });
+
+  app.get('/api/development-requesters', async (_request, response) => {
+    try {
+      if (!database.developmentRequester) {
+        throw new Error('Development Requester database access is unavailable.');
+      }
+
+      const requesters = await database.developmentRequester.findMany({
+        where: {
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+        orderBy: {
+          name: 'asc',
+        },
+      });
+
+      response.status(200).json(requesters);
+    } catch (error) {
+      console.error('TokTickIT Development Requesters API error:', error);
+      response.status(500).json({
+        error: 'Unable to load Development Requesters.',
       });
     }
   });
