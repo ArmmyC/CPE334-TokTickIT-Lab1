@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { Prisma } from '@prisma/client';
-import { describe, expect, it } from 'vitest';
+import request from 'supertest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   DEVELOPMENT_REQUESTERS,
   RELATED_SYSTEM_NAMES,
   type Lab2SeedClient,
   seedLab2ReferenceData,
 } from '../../src/lib/lab-02-seed.js';
+import { createApp, type ApplicationApiDatabase } from '../../src/app.js';
 
 type SeedRow = {
   name: string;
@@ -131,5 +133,54 @@ describe('Lab 2 reference data seed', () => {
       email: 'ariya@example.test',
       isActive: true,
     });
+  });
+});
+
+describe('Lab 2 Development Requesters API', () => {
+  it('returns active requesters ordered by name and excludes inactive rows', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { id: 2, name: 'Ariya Anderson', email: 'ariya@example.test' },
+      { id: 4, name: 'Narin Chai', email: 'narin@example.test' },
+    ]);
+    const database = {
+      developmentRequester: { findMany },
+    } as unknown as ApplicationApiDatabase;
+
+    const response = await request(createApp(database)).get('/api/development-requesters');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      { id: 2, name: 'Ariya Anderson', email: 'ariya@example.test' },
+      { id: 4, name: 'Narin Chai', email: 'narin@example.test' },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' },
+    });
+  });
+
+  it('returns an empty list when no active requesters exist', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const database = {
+      developmentRequester: { findMany },
+    } as unknown as ApplicationApiDatabase;
+
+    const response = await request(createApp(database)).get('/api/development-requesters');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+  });
+
+  it('returns a safe error when requester retrieval fails', async () => {
+    const findMany = vi.fn().mockRejectedValue(new Error('database unavailable'));
+    const database = {
+      developmentRequester: { findMany },
+    } as unknown as ApplicationApiDatabase;
+
+    const response = await request(createApp(database)).get('/api/development-requesters');
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Unable to load Development Requesters.' });
   });
 });

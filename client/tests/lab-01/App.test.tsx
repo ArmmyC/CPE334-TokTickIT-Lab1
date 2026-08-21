@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/App';
 
@@ -32,7 +33,7 @@ describe('TokTickIT health and category UI', () => {
   it('renders the application name and API categories', async () => {
     stubSuccessfulApi();
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     expect(screen.getByRole('heading', { name: 'TokTickIT IT Service Desk' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Check System' }));
@@ -60,7 +61,7 @@ describe('TokTickIT health and category UI', () => {
       ),
     );
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     fireEvent.click(screen.getByRole('button', { name: 'Check System' }));
     expect(screen.getByText(/Loading request categories/)).toBeInTheDocument();
@@ -81,7 +82,7 @@ describe('TokTickIT health and category UI', () => {
       ),
     );
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     fireEvent.click(screen.getByRole('button', { name: 'Check System' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/Unable to load request categories/);
@@ -90,7 +91,7 @@ describe('TokTickIT health and category UI', () => {
   it('shows a useful message when the backend is unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('connection refused')));
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     fireEvent.click(screen.getByRole('button', { name: 'Check System' }));
     expect(await screen.findByText('System Status: Offline')).toBeInTheDocument();
