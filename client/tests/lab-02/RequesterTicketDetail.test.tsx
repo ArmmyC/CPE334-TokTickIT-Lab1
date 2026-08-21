@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/App';
@@ -149,7 +149,8 @@ describe('Lab 2 Ticket Detail screen', () => {
       }
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
-    await screen.findByRole('button', { name: 'Retry' }).then((retry) => retry.click());
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    fireEvent.click(retry);
     await waitFor(() => expect(screen.getByText('TKT-2026-000042')).toBeInTheDocument());
   });
 });

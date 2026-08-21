@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
-import { createApp, type ApplicationApiDatabase } from '../../src/app.js';
+import { createApp, type ApplicationApiDatabase, type AttachmentRecord } from '../../src/app.js';
 import type { AttachmentStorage } from '../../src/lib/attachment-storage.js';
 
 const ticketDate = new Date('2026-08-21T10:00:00.000Z');
@@ -50,7 +50,7 @@ const ticketDetail = {
 };
 
 function createDetailHarness() {
-  const attachments = new Map([
+  const attachments = new Map<number, AttachmentRecord>([
     [activeAttachment.id, activeAttachment],
     [removedAttachment.id, removedAttachment],
   ]);
@@ -63,6 +63,9 @@ function createDetailHarness() {
     data: { removedAt: Date; removalReason: string };
   }) => {
     const current = attachments.get(where.id);
+    if (!current) {
+      throw new Error('Attachment fixture not found.');
+    }
     const updated = { ...current, ...data };
     attachments.set(where.id, updated);
     return Promise.resolve(updated);

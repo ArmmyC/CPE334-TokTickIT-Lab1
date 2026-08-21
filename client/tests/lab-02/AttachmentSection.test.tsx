@@ -97,6 +97,7 @@ afterEach(() => {
 
 describe('Lab 2 Ticket Detail attachment actions', () => {
   it('offers preview and download only for active image/PDF content', async () => {
+    stubAttachmentApi();
     await renderDetail();
 
     expect(screen.getByRole('link', { name: 'Preview evidence.pdf' })).toHaveAttribute(
@@ -135,13 +136,13 @@ describe('Lab 2 Ticket Detail attachment actions', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent(/Remove evidence.pdf/i);
     expect(screen.getByRole('textbox', { name: 'Removal reason' })).toBeRequired();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Attachment', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^Remove Attachment$/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/reason must be/i);
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Removal reason' }), {
       target: { value: 'Uploaded the wrong document' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Attachment', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^Remove Attachment$/ }));
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url, init]) =>
         String(url) === '/api/attachments/7' && init?.method === 'DELETE')).toBe(true);
