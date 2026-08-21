@@ -9,6 +9,7 @@ import {
   seedLab2ReferenceData,
 } from '../../src/lib/lab-02-seed.js';
 import { createApp, type ApplicationApiDatabase } from '../../src/app.js';
+import type { AttachmentStorage } from '../../src/lib/attachment-storage.js';
 
 type SeedRow = {
   name: string;
@@ -182,5 +183,357 @@ describe('Lab 2 Development Requesters API', () => {
 
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: 'Unable to load Development Requesters.' });
+  });
+});
+
+type TicketFixture = {
+  id: number;
+  ticketNumber: string;
+  ticketDate: Date;
+  requesterId: number;
+  categoryId: number;
+  relatedSystemId: number;
+  summary: string;
+  description: string;
+  requestedPriority: string;
+  itPriority: null;
+  currentStatus: 'NEW';
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function createTicketApiHarness() {
+  const createdAt = new Date('2026-08-21T09:00:00.000Z');
+  const ticket: TicketFixture = {
+    id: 42,
+    ticketNumber: 'TKT-2026-TMP-ABC12345',
+    ticketDate: createdAt,
+    requesterId: 1,
+    categoryId: 2,
+    relatedSystemId: 3,
+    summary: 'Laptop battery drains quickly',
+    description: 'The battery drains while the laptop is idle.',
+    requestedPriority: 'MEDIUM',
+    itPriority: null,
+    currentStatus: 'NEW',
+    createdAt,
+    updatedAt: createdAt,
+  };
+  const transaction = {
+    developmentRequester: {
+      findUnique: vi.fn().mockResolvedValue({ id: 1, isActive: true }),
+    },
+    category: {
+      findUnique: vi.fn().mockResolvedValue({ id: 2, isActive: true }),
+    },
+    relatedSystem: {
+      findUnique: vi.fn().mockResolvedValue({ id: 3, isActive: true }),
+    },
+    ticket: {
+      create: vi.fn().mockResolvedValue(ticket),
+      update: vi.fn().mockImplementation(({ data }: { data: Partial<TicketFixture> }) =>
+        Promise.resolve({ ...ticket, ...data })),
+    },
+  };
+  const database = {
+    category: {
+      findMany: vi.fn(),
+      findUnique: transaction.category.findUnique,
+    },
+    relatedSystem: {
+      findMany: vi.fn(),
+      findUnique: transaction.relatedSystem.findUnique,
+    },
+    developmentRequester: {
+      findMany: vi.fn(),
+      findUnique: transaction.developmentRequester.findUnique,
+    },
+    ticket: transaction.ticket,
+    $transaction: vi.fn(async (callback: (client: typeof transaction) => Promise<unknown>) =>
+      callback(transaction)),
+  } as unknown as ApplicationApiDatabase;
+
+  return { database, transaction, ticket };
+}
+
+describe('Lab 2 reference data and ticket creation API', () => {
+  it('returns active Related Systems ordered by name', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { id: 2, name: 'Campus Wi-Fi' },
+      { id: 1, name: 'Email' },
+    ]);
+    const { database } = createTicketApiHarness();
+    (database.relatedSystem as unknown as { findMany: typeof findMany }).findMany = findMany;
+
+    const response = await request(createApp(database)).get('/api/related-systems');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      { id: 2, name: 'Campus Wi-Fi' },
+      { id: 1, name: 'Email' },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  });
+
+  it('creates one owned NEW ticket with a final backend ticket number', async () => {
+    const { database, transaction } = createTicketApiHarness();
+
+    const response = await request(createApp(database))
+      .post('/api/tickets')
+      .send({
+        requesterId: 1,
+        categoryId: 2,
+        relatedSystemId: 3,
+        summary: '  Laptop battery drains quickly  ',
+        description: '  The battery drains while the laptop is idle.  ',
+        requestedPriority: 'MEDIUM',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.ticket).toMatchObject({
+      id: 42,
+      ticketNumber: 'TKT-2026-000042',
+      requesterId: 1,
+      categoryId: 2,
+      relatedSystemId: 3,
+      summary: 'Laptop battery drains quickly',
+      description: 'The battery drains while the laptop is idle.',
+      requestedPriority: 'MEDIUM',
+      currentStatus: 'NEW',
+      itPriority: null,
+    });
+    expect(response.body.ticket.ticketNumber).not.toContain('TMP');
+    expect(database.$transaction).toHaveBeenCalledTimes(1);
+    expect(transaction.ticket.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        requesterId: 1,
+        categoryId: 2,
+        relatedSystemId: 3,
+        summary: 'Laptop battery drains quickly',
+        description: 'The battery drains while the laptop is idle.',
+        requestedPriority: 'MEDIUM',
+        ticketNumber: expect.stringMatching(/^TKT-\d{4}-TMP-[a-z0-9]+$/),
+      }),
+    });
+    expect(transaction.ticket.update).toHaveBeenCalledWith({
+      where: { id: 42 },
+      data: { ticketNumber: 'TKT-2026-000042' },
+    });
+  });
+
+  it('returns field errors and does not create a ticket for invalid or server-controlled fields', async () => {
+    const { database } = createTicketApiHarness();
+
+    const response = await request(createApp(database))
+      .post('/api/tickets')
+      .send({
+        requesterId: 1,
+        categoryId: 2,
+        relatedSystemId: 3,
+        summary: ' x ',
+        description: ' short ',
+        requestedPriority: 'NOT_A_PRIORITY',
+        ticketNumber: 'TKT-2026-000001',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: 'Please correct the highlighted fields.',
+      fieldErrors: {
+        summary: 'Summary must be between 5 and 120 characters after trimming.',
+        description: 'Description must be between 10 and 4000 characters after trimming.',
+        requestedPriority: 'Requested Priority must be LOW, MEDIUM, HIGH, or URGENT.',
+        ticketNumber: 'Ticket Number is generated by the server and cannot be supplied.',
+      },
+    });
+    expect(database.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects inactive or missing reference records without creating a ticket', async () => {
+    const { database } = createTicketApiHarness();
+    const requesterFindUnique = (database.developmentRequester as unknown as {
+      findUnique: ReturnType<typeof vi.fn>;
+    }).findUnique;
+    requesterFindUnique.mockResolvedValue(null);
+
+    const response = await request(createApp(database))
+      .post('/api/tickets')
+      .send({
+        requesterId: 1,
+        categoryId: 2,
+        relatedSystemId: 3,
+        summary: 'Laptop battery drains quickly',
+        description: 'The battery drains while the laptop is idle.',
+        requestedPriority: 'MEDIUM',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.fieldErrors).toEqual({
+      requesterId: 'Development Requester does not exist or is inactive.',
+    });
+    expect((database.ticket as unknown as { create: ReturnType<typeof vi.fn> }).create).not.toHaveBeenCalled();
+  });
+});
+
+function createAttachmentApiHarness() {
+  const attachment = {
+    id: 7,
+    ticketId: 42,
+    originalName: 'evidence.pdf',
+    storageKey: 'generated-storage-key',
+    mimeType: 'application/pdf',
+    sizeBytes: 4,
+    uploadedAt: new Date('2026-08-21T09:00:00.000Z'),
+    removedAt: null,
+    removalReason: null,
+  };
+  const storage: AttachmentStorage = {
+    save: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+    read: vi.fn().mockResolvedValue(Buffer.from('pdf')),
+  };
+  const database = {
+    category: { findMany: vi.fn() },
+    ticket: {
+      findUnique: vi.fn().mockResolvedValue({ id: 42, requesterId: 1 }),
+    },
+    attachment: {
+      count: vi.fn().mockResolvedValue(0),
+      create: vi.fn().mockResolvedValue(attachment),
+    },
+  } as unknown as ApplicationApiDatabase;
+
+  return { database, storage, attachment };
+}
+
+describe('Lab 2 initial attachment upload API', () => {
+  it('stores a permitted attachment and returns metadata without the storage key', async () => {
+    const { database, storage } = createAttachmentApiHarness();
+
+    const response = await request(createApp(database, { attachmentStorage: storage }))
+      .post('/api/tickets/42/attachments')
+      .field('requesterId', '1')
+      .attach('file', Buffer.from('%PDF'), {
+        filename: 'evidence.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.attachment).toMatchObject({
+      id: 7,
+      ticketId: 42,
+      originalName: 'evidence.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 4,
+      downloadAvailable: true,
+    });
+    expect(response.body.attachment.storageKey).toBeUndefined();
+    expect(storage.save).toHaveBeenCalledWith(expect.any(String), Buffer.from('%PDF'));
+  });
+
+  it('removes stored bytes when attachment metadata creation fails', async () => {
+    const { database, storage } = createAttachmentApiHarness();
+    (database.attachment as unknown as { create: ReturnType<typeof vi.fn> }).create
+      .mockRejectedValue(new Error('metadata failed'));
+
+    const response = await request(createApp(database, { attachmentStorage: storage }))
+      .post('/api/tickets/42/attachments')
+      .field('requesterId', '1')
+      .attach('file', Buffer.from('%PDF'), {
+        filename: 'evidence.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Unable to upload the attachment.' });
+    const storedKey = (storage.save as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(storage.remove).toHaveBeenCalledWith(storedKey);
+  });
+
+  it('rejects unsupported extensions or MIME types', async () => {
+    const { database, storage } = createAttachmentApiHarness();
+
+    const response = await request(createApp(database, { attachmentStorage: storage }))
+      .post('/api/tickets/42/attachments')
+      .field('requesterId', '1')
+      .attach('file', Buffer.from('not an image'), {
+        filename: 'evidence.exe',
+        contentType: 'application/octet-stream',
+      });
+
+    expect(response.status).toBe(415);
+    expect(response.body).toEqual({ error: 'This attachment type is not supported.' });
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects a sixth active attachment', async () => {
+    const { database, storage } = createAttachmentApiHarness();
+    (database.attachment as unknown as { count: ReturnType<typeof vi.fn> }).count
+      .mockResolvedValue(5);
+
+    const response = await request(createApp(database, { attachmentStorage: storage }))
+      .post('/api/tickets/42/attachments')
+      .field('requesterId', '1')
+      .attach('file', Buffer.from('%PDF'), {
+        filename: 'evidence.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: 'A Ticket may have at most five active attachments.',
+    });
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('uses the same safe not-found response for a foreign Ticket', async () => {
+    const { database, storage } = createAttachmentApiHarness();
+    (database.ticket as unknown as { findUnique: ReturnType<typeof vi.fn> }).findUnique
+      .mockResolvedValue(null);
+
+    const response = await request(createApp(database, { attachmentStorage: storage }))
+      .post('/api/tickets/42/attachments')
+      .field('requesterId', '1')
+      .attach('file', Buffer.from('%PDF'), {
+        filename: 'evidence.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'Ticket not found.' });
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects an attachment over the 5 MB limit with 413', async () => {
+    const { database, storage } = createAttachmentApiHarness();
+    const oversizedFile = Buffer.alloc(5 * 1024 * 1024 + 1, 0x61);
+
+    const response = await request(createApp(database, { attachmentStorage: storage }))
+      .post('/api/tickets/42/attachments')
+      .field('requesterId', '1')
+      .attach('file', oversizedFile, {
+        filename: 'large.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(413);
+    expect(response.body).toEqual({ error: 'This attachment is larger than 5 MB.' });
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('returns a safe 400 response for malformed JSON', async () => {
+    const { database } = createTicketApiHarness();
+
+    const response = await request(createApp(database))
+      .post('/api/tickets')
+      .set('Content-Type', 'application/json')
+      .send('{"requesterId":');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'Invalid JSON request.' });
   });
 });
