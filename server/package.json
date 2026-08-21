@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "prisma:generate": "dotenv -e ../.env -- prisma generate",
     "prisma:migrate": "dotenv -e ../.env -- prisma migrate dev --name lab_01_foundation",
+    "prisma:migrate:lab2": "dotenv -e ../.env -- prisma migrate dev --name lab_02_data_model",
     "prisma:deploy": "dotenv -e ../.env -- prisma migrate deploy",
     "prisma:seed": "dotenv -e ../.env -- prisma db seed",
     "prisma:reset": "dotenv -e ../.env -- prisma migrate reset --force"

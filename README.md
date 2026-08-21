@@ -2,6 +2,8 @@
 
 TokTickIT is the CPE334 Lab 1 IT service-desk starter. This first increment establishes the React, Express, Prisma, PostgreSQL, and test tooling that later Lab 1 Issues build on.
 
+Lab 2 extends that foundation with Development Requesters, Related Systems, Tickets, and attachment metadata. Attachment bytes are stored locally under the ignored `server/storage/attachments/` directory and are never committed.
+
 ## Technology
 
 - Frontend: React, TypeScript, Vite, Bootstrap
@@ -53,6 +55,17 @@ Run the configured unit and API test commands:
 Build both workspaces:
 
     npm run build
+
+## Lab 2 database preparation
+
+Start PostgreSQL, apply the Lab 2 migration, generate the Prisma client, and seed the fixed reference data:
+
+    npm run db:up
+    npm run prisma:migrate:lab2 --workspace server
+    npm run prisma:generate --workspace server
+    npm run db:seed
+
+The repeatable seed preserves the four Lab 1 Categories and upserts seven Related Systems, four active Development Requesters, and one inactive Development Requester. Re-running it does not create duplicate rows.
 
 ## Lab 1 Git workflow
 
