@@ -128,7 +128,7 @@ describe('Lab 2 requester selection and shell context', () => {
     fireEvent.click(continueButton);
 
     expect(await screen.findByRole('heading', { name: 'My Tickets' })).toBeInTheDocument();
-    expect(screen.getByText('Narin Chai')).toBeInTheDocument();
+    expect(screen.getAllByText('Narin Chai').length).toBeGreaterThan(0);
     expect(sessionStorage.getItem('toktickit.developmentRequesterId')).toBe('2');
   });
 

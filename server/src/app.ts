@@ -19,6 +19,10 @@ export type CategoryApiDatabase = {
       select: { id: true; name: true };
       orderBy: { id: 'asc' };
     }): Promise<CategoryRecord[]>;
+    findUnique?(args: {
+      where: { id: number };
+      select: { id: true; isActive: true };
+    }): Promise<{ id: number; isActive: boolean } | null>;
   };
 };
 
@@ -89,6 +93,64 @@ export type AttachmentRecord = {
   removalReason: string | null;
 };
 
+type TicketListSearchFilter = {
+  contains: string;
+  mode: 'insensitive';
+};
+
+type TicketListWhere = {
+  requesterId: number;
+  OR?: Array<{
+    ticketNumber?: TicketListSearchFilter;
+    summary?: TicketListSearchFilter;
+    description?: TicketListSearchFilter;
+  }>;
+  categoryId?: number;
+  relatedSystemId?: number;
+  requestedPriority?: RequestedPriority;
+  currentStatus?: 'NEW';
+};
+
+type TicketListOrderBy =
+  | { ticketDate: 'asc' | 'desc' }
+  | { updatedAt: 'asc' | 'desc' }
+  | { ticketNumber: 'asc' | 'desc' }
+  | { id: 'desc' };
+
+export type TicketListItem = {
+  id: number;
+  ticketNumber: string;
+  ticketDate: Date;
+  summary: string;
+  category: CategoryRecord;
+  relatedSystem: RelatedSystemRecord;
+  requestedPriority: string;
+  itPriority: string | null;
+  currentStatus: string;
+  updatedAt: Date;
+};
+
+type TicketListFindManyArgs = {
+  where: TicketListWhere;
+  skip: number;
+  take: number;
+  orderBy: TicketListOrderBy[];
+  select: {
+    id: true;
+    ticketNumber: true;
+    ticketDate: true;
+    summary: true;
+    category: { select: { id: true; name: true } };
+    relatedSystem: { select: { id: true; name: true } };
+    requestedPriority: true;
+    itPriority: true;
+    currentStatus: true;
+    updatedAt: true;
+  };
+};
+
+type TicketListCountArgs = { where: TicketListWhere };
+
 type TicketTransactionDatabase = {
   developmentRequester: DevelopmentRequesterApiDatabase['developmentRequester'];
   category: {
@@ -114,6 +176,8 @@ export type TicketApiDatabase = {
       where: { id: number };
       select: { id: true; requesterId: true };
     }): Promise<{ id: number; requesterId: number } | null>;
+    findMany?(args: TicketListFindManyArgs): Promise<TicketListItem[]>;
+    count?(args: TicketListCountArgs): Promise<number>;
   };
   attachment: {
     count(args: { where: { ticketId: number; removedAt: null } }): Promise<number>;
@@ -146,6 +210,10 @@ const ATTACHMENT_MIME_BY_EXTENSION: Record<string, string> = {
   '.pdf': 'application/pdf',
 };
 
+const TICKET_LIST_PAGE_SIZES = new Set([10, 20, 50]);
+const TICKET_LIST_SORT_FIELDS = new Set(['ticketDate', 'updatedAt', 'ticketNumber']);
+const TICKET_LIST_SORT_ORDERS = new Set(['asc', 'desc']);
+
 class TicketValidationError extends Error {
   constructor(public readonly fieldErrors: Record<string, string>) {
     super('Ticket validation failed.');
@@ -158,6 +226,12 @@ class AttachmentRequestError extends Error {
   }
 }
 
+class TicketListValidationError extends Error {
+  constructor(public readonly fieldErrors: Record<string, string>) {
+    super('Ticket list query validation failed.');
+  }
+}
+
 function parsePositiveInteger(value: unknown): number | null {
   if (typeof value === 'number') {
     return Number.isSafeInteger(value) && value > 0 ? value : null;
@@ -167,6 +241,112 @@ function parsePositiveInteger(value: unknown): number | null {
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   }
   return null;
+}
+
+function parseQueryString(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return typeof value === 'string' ? value : null;
+}
+
+type TicketListQuery = {
+  requesterId: number;
+  page: number;
+  pageSize: number;
+  search?: string;
+  categoryId?: number;
+  relatedSystemId?: number;
+  requestedPriority?: RequestedPriority;
+  currentStatus?: 'NEW';
+  sortBy: 'ticketDate' | 'updatedAt' | 'ticketNumber';
+  sortOrder: 'asc' | 'desc';
+};
+
+function parseTicketListQuery(query: unknown): TicketListQuery {
+  const source = isRecord(query) ? query : {};
+  const fieldErrors: Record<string, string> = {};
+
+  const requesterValue = parseQueryString(source.requesterId);
+  const requesterId = parsePositiveInteger(requesterValue);
+  if (requesterId === null) {
+    fieldErrors.requesterId = 'A positive active Development Requester id is required.';
+  }
+
+  const pageValue = parseQueryString(source.page);
+  const page = pageValue === undefined ? 1 : parsePositiveInteger(pageValue);
+  if (page === null) {
+    fieldErrors.page = 'Page must be a positive integer.';
+  }
+
+  const pageSizeValue = parseQueryString(source.pageSize);
+  const pageSize = pageSizeValue === undefined ? 10 : parsePositiveInteger(pageSizeValue);
+  if (pageSize === null || !TICKET_LIST_PAGE_SIZES.has(pageSize)) {
+    fieldErrors.pageSize = 'Page size must be 10, 20, or 50.';
+  }
+
+  const searchValue = parseQueryString(source.search);
+  if (searchValue === null) {
+    fieldErrors.search = 'Search must be a single text value.';
+  }
+  const search = searchValue?.trim();
+  if (search && search.length > 120) {
+    fieldErrors.search = 'Search must be 120 characters or fewer.';
+  }
+
+  const categoryValue = parseQueryString(source.categoryId);
+  const categoryId = categoryValue === undefined ? undefined : parsePositiveInteger(categoryValue);
+  if (categoryValue !== undefined && categoryId === null) {
+    fieldErrors.categoryId = 'Category id must be a positive integer.';
+  }
+
+  const relatedSystemValue = parseQueryString(source.relatedSystemId);
+  const relatedSystemId = relatedSystemValue === undefined
+    ? undefined
+    : parsePositiveInteger(relatedSystemValue);
+  if (relatedSystemValue !== undefined && relatedSystemId === null) {
+    fieldErrors.relatedSystemId = 'Related System id must be a positive integer.';
+  }
+
+  const requestedPriorityValue = parseQueryString(source.requestedPriority);
+  if (requestedPriorityValue !== undefined &&
+      (requestedPriorityValue === null || !REQUESTED_PRIORITIES.has(requestedPriorityValue as RequestedPriority))) {
+    fieldErrors.requestedPriority = 'Requested Priority must be LOW, MEDIUM, HIGH, or URGENT.';
+  }
+
+  const currentStatusValue = parseQueryString(source.currentStatus);
+  if (currentStatusValue !== undefined && currentStatusValue !== 'NEW') {
+    fieldErrors.currentStatus = 'Current Status must be NEW.';
+  }
+
+  const sortByValue = parseQueryString(source.sortBy);
+  const sortBy = sortByValue === undefined ? 'updatedAt' : sortByValue;
+  if (sortBy === null || !TICKET_LIST_SORT_FIELDS.has(sortBy)) {
+    fieldErrors.sortBy = 'Sort By must be ticketDate, updatedAt, or ticketNumber.';
+  }
+
+  const sortOrderValue = parseQueryString(source.sortOrder);
+  const sortOrder = sortOrderValue === undefined ? 'desc' : sortOrderValue;
+  if (sortOrder === null || !TICKET_LIST_SORT_ORDERS.has(sortOrder)) {
+    fieldErrors.sortOrder = 'Sort Order must be asc or desc.';
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new TicketListValidationError(fieldErrors);
+  }
+
+  return {
+    requesterId: requesterId as number,
+    page: page as number,
+    pageSize: pageSize as number,
+    ...(search ? { search } : {}),
+    ...(categoryId === undefined ? {} : { categoryId: categoryId as number }),
+    ...(relatedSystemId === undefined ? {} : { relatedSystemId: relatedSystemId as number }),
+    ...(requestedPriorityValue === undefined ? {} : { requestedPriority: requestedPriorityValue as RequestedPriority }),
+    ...(currentStatusValue === undefined ? {} : { currentStatus: currentStatusValue as 'NEW' }),
+    sortBy: sortBy as TicketListQuery['sortBy'],
+    sortOrder: sortOrder as TicketListQuery['sortOrder'],
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -390,6 +570,118 @@ export function createApp(
       response.status(500).json({
         error: 'Unable to load Development Requesters.',
       });
+    }
+  });
+
+  app.get('/api/tickets', async (request, response) => {
+    try {
+      if (!database.ticket?.findMany || !database.ticket.count || !database.developmentRequester?.findUnique) {
+        throw new Error('Ticket list database access is unavailable.');
+      }
+
+      const query = parseTicketListQuery(request.query);
+      const requester = await database.developmentRequester.findUnique({
+        where: { id: query.requesterId },
+        select: { id: true, isActive: true },
+      });
+      if (!requester?.isActive) {
+        throw new TicketListValidationError({
+          requesterId: 'Development Requester does not exist or is inactive.',
+        });
+      }
+
+      if (query.categoryId !== undefined) {
+        if (!database.category.findUnique) {
+          throw new Error('Category list database access is unavailable.');
+        }
+        const category = await database.category.findUnique({
+          where: { id: query.categoryId },
+          select: { id: true, isActive: true },
+        });
+        if (!category?.isActive) {
+          throw new TicketListValidationError({
+            categoryId: 'Category does not exist or is inactive.',
+          });
+        }
+      }
+
+      if (query.relatedSystemId !== undefined) {
+        if (!database.relatedSystem?.findUnique) {
+          throw new Error('Related System list database access is unavailable.');
+        }
+        const relatedSystem = await database.relatedSystem.findUnique({
+          where: { id: query.relatedSystemId },
+          select: { id: true, isActive: true },
+        });
+        if (!relatedSystem?.isActive) {
+          throw new TicketListValidationError({
+            relatedSystemId: 'Related System does not exist or is inactive.',
+          });
+        }
+      }
+
+      const where: TicketListWhere = {
+        requesterId: query.requesterId,
+        ...(query.search
+          ? {
+              OR: [
+                { ticketNumber: { contains: query.search, mode: 'insensitive' } },
+                { summary: { contains: query.search, mode: 'insensitive' } },
+                { description: { contains: query.search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+        ...(query.categoryId === undefined ? {} : { categoryId: query.categoryId }),
+        ...(query.relatedSystemId === undefined ? {} : { relatedSystemId: query.relatedSystemId }),
+        ...(query.requestedPriority === undefined ? {} : { requestedPriority: query.requestedPriority }),
+        ...(query.currentStatus === undefined ? {} : { currentStatus: query.currentStatus }),
+      };
+      const orderBy: TicketListOrderBy[] = [
+        { [query.sortBy]: query.sortOrder } as TicketListOrderBy,
+        { id: 'desc' },
+      ];
+      const [items, totalItems] = await Promise.all([
+        database.ticket.findMany({
+          where,
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+          orderBy,
+          select: {
+            id: true,
+            ticketNumber: true,
+            ticketDate: true,
+            summary: true,
+            category: { select: { id: true, name: true } },
+            relatedSystem: { select: { id: true, name: true } },
+            requestedPriority: true,
+            itPriority: true,
+            currentStatus: true,
+            updatedAt: true,
+          },
+        }),
+        database.ticket.count({ where }),
+      ]);
+      const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / query.pageSize);
+
+      response.status(200).json({
+        items,
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages,
+        hasNext: totalPages > 0 && query.page < totalPages,
+        hasPrevious: totalPages > 0 && query.page > 1,
+      });
+    } catch (error) {
+      if (error instanceof TicketListValidationError) {
+        response.status(400).json({
+          error: 'Please correct the Ticket list query.',
+          fieldErrors: error.fieldErrors,
+        });
+        return;
+      }
+      console.error('TokTickIT ticket list API error:', error);
+      response.status(500).json({ error: 'Unable to load Tickets.' });
     }
   });
 
