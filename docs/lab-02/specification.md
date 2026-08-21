@@ -97,8 +97,9 @@ The Development Requester selector simulates a current user only for Lab 2 testi
 - BR-38: IT Priority is nullable and read-only in Lab 2. The UI displays `Not assigned` until a later IT Staff workflow sets it.
 - BR-39: A trimmed blank search value is treated as no search. A non-blank search is limited to 120 characters.
 - BR-40: Requesting a valid page beyond the final page returns an empty `items` array with the requested page and accurate totals; it is not an error.
-- BR-41: Initial attachments are uploaded one at a time after the Ticket transaction succeeds. The Ticket and successful uploads remain when a later file fails, and every failed file is reported.
+- BR-41: Initial attachments are uploaded one at a time after the Ticket transaction succeeds. The Ticket and successful uploads remain when a later file fails, and every failed file is reported by filename in the Create Ticket success panel defined in `ui-spec.md` section 6.
 - BR-42: Active image and PDF content may be previewed only through the ownership-checked Attachment content endpoint. Removed content returns the same safe `404` used for missing or foreign resources.
+- BR-43: `npm run test:db:prepare` parses `DATABASE_URL` and exits non-zero before invoking any reset, migration, or seed command unless the database pathname is exactly `/toktickit_test`. A missing or malformed URL, or any other database name including the development database, is rejected.
 
 ## 6. UI Specification Summary
 

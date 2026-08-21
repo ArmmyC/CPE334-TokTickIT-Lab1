@@ -14,6 +14,7 @@ Tests must cover happy paths, invalid input, boundaries, ownership, failures, lo
 | UNIT-02 | Unit | BR-12-17, AC-05 | Ticket validation and trimming | Valid values pass; invalid values return field errors | `server/tests/lab-02/create-ticket.api.test.ts` | Planned |
 | UNIT-03 | Unit | BR-19-27, AC-07, AC-15 | Attachment validation and removal reason | Type, size, count, and reason rules are enforced | `server/tests/lab-02/attachments.api.test.ts` | Planned |
 | UNIT-04 | Unit | BR-30, AC-01, AC-04 | Repeatable Lab 2 seed | Required reference data and Requesters are upserted without duplicates | `server/tests/lab-02/create-ticket.api.test.ts` | Planned |
+| INFRA-01 | Script safety | BR-43 | Test-database preparation guard | Missing, malformed, and non-`toktickit_test` URLs exit non-zero before any destructive database command; the dedicated test URL may continue | `server/tests/lab-02/test-db-guard.test.ts` | Planned |
 | API-01 | API | AC-01 | Active Requester retrieval | Active Requesters returned; inactive excluded | `server/tests/lab-02/create-ticket.api.test.ts` | Planned |
 | API-02 | API | AC-04 | Reference-data retrieval | Active Categories and Related Systems are returned from the database | `server/tests/lab-02/create-ticket.api.test.ts` | Planned |
 | API-03 | API | AC-06 | Valid Ticket creation | 201, saved Ticket, matching requesterId, unique number, NEW status | `server/tests/lab-02/create-ticket.api.test.ts` | Planned |
@@ -84,7 +85,7 @@ npm run test:e2e
 
 Database-dependent checks additionally require Docker PostgreSQL, Prisma migration, and the repeatable seed command documented in `README.md`.
 
-The E2E environment uses a dedicated `db-test` PostgreSQL service on host port `5434` and an uncommitted `.env.test` copied from `.env.test.example`. Its `DATABASE_URL` points only to `toktickit_test`. The E2E preparation command resets, deploys migrations, and seeds that database before Playwright starts the API and client; it must never target the development database.
+The E2E environment uses a dedicated `db-test` PostgreSQL service on host port `5434` and an uncommitted `.env.test` copied from `.env.test.example`. Its `DATABASE_URL` points only to `toktickit_test`. Before any destructive command, `test:db:prepare` parses `DATABASE_URL` and requires its database pathname to equal `/toktickit_test`; missing, malformed, or differently named database URLs hard-fail with a non-zero exit. Only after that guard passes may the command reset, deploy migrations, and seed the test database before Playwright starts the API and client.
 
 Required final command sequence:
 
