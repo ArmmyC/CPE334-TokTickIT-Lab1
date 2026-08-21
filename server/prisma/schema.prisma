@@ -9,6 +9,86 @@ datasource db {
 
 model Category {
   id        Int      @id @default(autoincrement())
-  name      String   @unique
+  name      String   @unique @db.VarChar(100)
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  tickets   Ticket[]
+}
+
+model RelatedSystem {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(100)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tickets   Ticket[]
+}
+
+model DevelopmentRequester {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(120)
+  email     String   @unique @db.VarChar(254)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tickets   Ticket[]
+}
+
+model Ticket {
+  id                Int                  @id @default(autoincrement())
+  ticketNumber      String               @unique @db.VarChar(32)
+  ticketDate        DateTime             @default(now())
+  requesterId       Int
+  categoryId        Int
+  relatedSystemId   Int
+  summary           String               @db.VarChar(120)
+  description       String               @db.Text
+  requestedPriority RequestedPriority
+  itPriority        TicketPriority?
+  currentStatus     TicketStatus         @default(NEW)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  requester         DevelopmentRequester @relation(fields: [requesterId], references: [id], onDelete: Restrict)
+  category          Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  relatedSystem     RelatedSystem        @relation(fields: [relatedSystemId], references: [id], onDelete: Restrict)
+  attachments       Attachment[]
+
+  @@index([requesterId, updatedAt, id])
+  @@index([categoryId])
+  @@index([relatedSystemId])
+  @@index([requestedPriority])
+  @@index([currentStatus])
+}
+
+model Attachment {
+  id            Int       @id @default(autoincrement())
+  ticketId      Int
+  originalName  String    @db.VarChar(255)
+  storageKey    String    @unique @db.VarChar(100)
+  mimeType      String    @db.VarChar(100)
+  sizeBytes     Int
+  uploadedAt    DateTime  @default(now())
+  removedAt     DateTime?
+  removalReason String?   @db.VarChar(500)
+  ticket        Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, removedAt])
+}
+
+enum RequestedPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  NEW
 }
