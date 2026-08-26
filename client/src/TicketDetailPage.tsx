@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useRequesterContext } from './requester-context';
 
@@ -168,6 +168,9 @@ function AttachmentSection({
   onAttachmentsChange,
 }: AttachmentSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const attachmentsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const returnFocusRef = useRef<HTMLButtonElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -177,6 +180,8 @@ function AttachmentSection({
   const [removalReason, setRemovalReason] = useState('');
   const [removalError, setRemovalError] = useState<string | null>(null);
   const [removingBusy, setRemovingBusy] = useState(false);
+  const removingBusyRef = useRef(removingBusy);
+  removingBusyRef.current = removingBusy;
 
   const activeCount = attachments.filter((attachment) => attachment.removedAt === null).length;
 
@@ -231,18 +236,67 @@ function AttachmentSection({
     }
   };
 
-  const openRemoval = (attachment: Attachment) => {
+  const openRemoval = (attachment: Attachment, trigger: HTMLButtonElement) => {
+    returnFocusRef.current = trigger;
     setRemoving(attachment);
     setRemovalReason('');
     setRemovalError(null);
   };
 
-  const closeRemoval = () => {
-    if (removingBusy) return;
+  const closeRemoval = useCallback(() => {
+    if (removingBusyRef.current) return;
     setRemoving(null);
     setRemovalReason('');
     setRemovalError(null);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!removing) return undefined;
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+
+    const getFocusableElements = () => Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+
+    getFocusableElements()[0]?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRemoval();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+      if (event.shiftKey && (activeElement === firstElement || !dialog.contains(activeElement))) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && (activeElement === lastElement || !dialog.contains(activeElement))) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      const trigger = returnFocusRef.current;
+      window.setTimeout(() => {
+        if (trigger?.isConnected) {
+          trigger.focus();
+        } else {
+          attachmentsHeadingRef.current?.focus();
+        }
+      }, 0);
+    };
+  }, [closeRemoval, removing]);
 
   const removeAttachment = async () => {
     if (!removing || removingBusy) return;
@@ -280,7 +334,7 @@ function AttachmentSection({
     <section className="ticket-detail-card attachment-section" aria-labelledby="attachments-title">
       <div className="attachment-section-heading">
         <div>
-          <h2 id="attachments-title">Attachments</h2>
+          <h2 id="attachments-title" ref={attachmentsHeadingRef} tabIndex={-1}>Attachments</h2>
           <p className="text-secondary mb-0">Active files can be previewed or downloaded. Removed files keep their metadata.</p>
         </div>
         <span className="attachment-count" aria-label={`${activeCount} active attachments`}>{activeCount} / {MAX_ACTIVE_ATTACHMENTS} active</span>
@@ -316,7 +370,7 @@ function AttachmentSection({
                     <a className="btn btn-secondary btn-sm" href={attachmentUrl(attachment.id, requesterId, 'attachment')}>
                       Download {attachment.originalName}
                     </a>
-                    <button type="button" className="btn btn-outline-danger btn-sm" aria-label={`Remove Attachment ${attachment.originalName}`} onClick={() => openRemoval(attachment)}>
+                    <button type="button" className="btn btn-outline-danger btn-sm" aria-label={`Remove Attachment ${attachment.originalName}`} onClick={(event) => openRemoval(attachment, event.currentTarget)}>
                       Remove
                     </button>
                   </div>
@@ -351,13 +405,21 @@ function AttachmentSection({
 
       {removing && (
         <div className="attachment-dialog-backdrop">
-          <div className="attachment-dialog" role="dialog" aria-modal="true" aria-labelledby="remove-attachment-title">
+          <div
+            ref={dialogRef}
+            className="attachment-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-attachment-title"
+            aria-describedby="remove-attachment-description"
+          >
             <h2 id="remove-attachment-title">Remove {removing.originalName}</h2>
-            <p>This keeps the attachment metadata but blocks future content access.</p>
+            <p id="remove-attachment-description">This keeps the attachment metadata but blocks future content access.</p>
             <label htmlFor="removal-reason" className="required-label">Removal reason</label>
             <textarea
               id="removal-reason"
               aria-label="Removal reason"
+              aria-describedby={removalError ? 'remove-attachment-description removal-reason-error' : 'remove-attachment-description'}
               required
               value={removalReason}
               onChange={(event) => {
@@ -368,7 +430,7 @@ function AttachmentSection({
               maxLength={500}
               rows={4}
             />
-            {removalError && <p role="alert" className="field-error">{removalError}</p>}
+            {removalError && <p id="removal-reason-error" role="alert" className="field-error">{removalError}</p>}
             <div className="action-row">
               <button type="button" className="btn btn-secondary" onClick={closeRemoval} disabled={removingBusy}>Cancel</button>
               <button type="button" className="btn btn-danger" onClick={() => void removeAttachment()} disabled={removingBusy}>

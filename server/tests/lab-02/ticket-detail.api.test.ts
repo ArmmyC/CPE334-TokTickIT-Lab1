@@ -138,11 +138,20 @@ describe('Lab 2 Ticket Detail API', () => {
     expect(JSON.stringify(response.body)).not.toContain('storageKey');
   });
 
-  it('uses the same safe 404 for a missing or foreign Ticket', async () => {
+  it('uses the same safe 404 for a foreign Ticket that exists', async () => {
+    const { database } = createDetailHarness();
+
+    const response = await request(createApp(database)).get('/api/tickets/42?requesterId=2');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'Ticket not found.' });
+  });
+
+  it('uses the same safe 404 for a missing Ticket', async () => {
     const { database, ticketFindUnique } = createDetailHarness();
     ticketFindUnique.mockResolvedValue(null);
 
-    const response = await request(createApp(database)).get('/api/tickets/42?requesterId=2');
+    const response = await request(createApp(database)).get('/api/tickets/42?requesterId=1');
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: 'Ticket not found.' });
@@ -221,12 +230,10 @@ describe('Lab 2 Attachment metadata and content API', () => {
     expect(removedResponse.body).toEqual({ error: 'Attachment not found.' });
     expect(storage.read).not.toHaveBeenCalled();
 
-    attachmentFindUnique.mockResolvedValueOnce(null);
     const foreignResponse = await request(app).get('/api/attachments/7/download?requesterId=2');
     expect(foreignResponse.status).toBe(404);
     expect(foreignResponse.body).toEqual({ error: 'Attachment not found.' });
 
-    attachmentFindUnique.mockResolvedValueOnce(null);
     const missingResponse = await request(app).get('/api/attachments/999/download?requesterId=1');
     expect(missingResponse.status).toBe(404);
     expect(missingResponse.body).toEqual({ error: 'Attachment not found.' });
@@ -288,7 +295,7 @@ describe('Lab 2 Attachment metadata and content API', () => {
     expect(repeatedResponse.status).toBe(409);
     expect(repeatedResponse.body.error).toEqual(expect.any(String));
 
-    attachmentFindUnique.mockResolvedValueOnce(null);
+    attachmentFindUnique.mockResolvedValueOnce(activeAttachment);
     const foreignResponse = await request(createApp(database))
       .delete('/api/attachments/7')
       .send({ requesterId: 2, removalReason: 'Another valid reason' });

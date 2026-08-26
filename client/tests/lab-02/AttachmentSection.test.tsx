@@ -132,13 +132,23 @@ describe('Lab 2 Ticket Detail attachment actions', () => {
     const fetchMock = stubAttachmentApi();
     await renderDetail();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Attachment evidence.pdf' }));
+    const removeTrigger = screen.getByRole('button', { name: 'Remove Attachment evidence.pdf' });
+    fireEvent.click(removeTrigger);
     expect(screen.getByRole('dialog')).toHaveTextContent(/Remove evidence.pdf/i);
-    expect(screen.getByRole('textbox', { name: 'Removal reason' })).toBeRequired();
+    const removalReason = screen.getByRole('textbox', { name: 'Removal reason' });
+    await waitFor(() => expect(removalReason).toHaveFocus());
+    expect(removalReason).toBeRequired();
+    expect(removalReason).toHaveAttribute('aria-describedby', expect.stringContaining('remove-attachment-description'));
 
     fireEvent.click(screen.getByRole('button', { name: /^Remove Attachment$/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/reason must be/i);
+    expect(removalReason).toHaveAttribute('aria-describedby', expect.stringContaining('removal-reason-error'));
 
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(removeTrigger).toHaveFocus();
+
+    fireEvent.click(removeTrigger);
     fireEvent.change(screen.getByRole('textbox', { name: 'Removal reason' }), {
       target: { value: 'Uploaded the wrong document' },
     });
@@ -151,5 +161,23 @@ describe('Lab 2 Ticket Detail attachment actions', () => {
     expect(screen.getByText('Uploaded the wrong document')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Preview evidence.pdf/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Download evidence.pdf/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps keyboard focus inside the removal dialog while it is open', async () => {
+    stubAttachmentApi();
+    await renderDetail();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Attachment evidence.pdf' }));
+    const dialog = screen.getByRole('dialog');
+    const removalReason = screen.getByRole('textbox', { name: 'Removal reason' });
+    const removeButton = screen.getByRole('button', { name: /^Remove Attachment$/ });
+
+    await waitFor(() => expect(removalReason).toHaveFocus());
+    removeButton.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(removalReason).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(removeButton).toHaveFocus();
   });
 });
