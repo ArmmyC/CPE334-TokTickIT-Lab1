@@ -56,6 +56,13 @@ Build both workspaces:
 
     npm run build
 
+Prepare the isolated Lab 2 test database and run the Playwright requester flow:
+
+    Copy .env.test.example to .env.test and replace the local credentials.
+    npm run test:e2e
+
+The E2E script starts the test service on PostgreSQL host port 5434, validates that `DATABASE_URL` points to the `toktickit_test` database, resets and seeds it, then starts the API and client. The preparation guard rejects missing, malformed, development, or differently named database URLs before running reset, migration, or seed commands. Never commit `.env.test`.
+
 ## Lab 2 database preparation
 
 Start PostgreSQL, apply the Lab 2 migration, generate the Prisma client, and seed the fixed reference data:

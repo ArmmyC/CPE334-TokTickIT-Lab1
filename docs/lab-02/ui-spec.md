@@ -166,3 +166,5 @@ Screenshot paths:
 - `artifacts/lab-02/screenshots/ticket-detail/`
 
 Required reference viewports are desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`. Create Ticket evidence additionally captures initial, validation, submitting, success, safe API failure with retained values, and invalid attachment states. My Tickets evidence captures populated, empty, no-results, filtered/sorted/paginated, and switched-Requester states. Ticket Detail evidence captures owned detail, active upload/download/preview, soft removal with reason, retained removed metadata, and rejected foreign access.
+
+Issue 19 visual verification on 2026-08-28 produced real Playwright evidence for all three viewports. Create Ticket screenshots use the `desktop-`, `tablet-`, and `mobile-` prefixes with `initial`, `validation`, `invalid-attachment`, `api-failure-retained`, `submitting`, and `success` states. My Tickets uses the `filtered` state, and Ticket Detail uses `initial`, `active-attachment`, `removed-attachment`, and `foreign-404`. The E2E assertions also checked `scrollWidth <= innerWidth` at each major screen.

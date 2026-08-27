@@ -28,7 +28,7 @@ a:focus-visible, button:focus-visible, select:focus-visible { outline: 3px solid
 .field-group { margin: 1.75rem 0 1.25rem; }
 .field-group label { display: block; margin-bottom: .5rem; font-weight: 700; }
 .field-group .form-select { min-height: 3rem; border-color: #9bb9a9; }
-.btn-primary { --bs-btn-bg: var(--zen-primary); --bs-btn-border-color: var(--zen-primary); --bs-btn-hover-bg: var(--zen-secondary); --bs-btn-hover-border-color: var(--zen-secondary); }
+.btn-primary { --bs-btn-bg: var(--zen-primary); --bs-btn-border-color: var(--zen-primary); --bs-btn-hover-bg: var(--zen-secondary); --bs-btn-hover-border-color: var(--zen-secondary); --bs-btn-disabled-bg: var(--zen-primary); --bs-btn-disabled-border-color: var(--zen-primary); --bs-btn-disabled-color: #fff; }
 .btn-secondary { --bs-btn-color: var(--zen-primary); --bs-btn-bg: #fff; --bs-btn-border-color: var(--zen-primary); --bs-btn-hover-color: #fff; --bs-btn-hover-bg: var(--zen-secondary); --bs-btn-hover-border-color: var(--zen-secondary); }
 .state-message { margin: 1.5rem 0 0; padding: 1rem; border-radius: .75rem; background: var(--zen-pale); }
 .state-message p { margin-bottom: .75rem; }
