@@ -11,6 +11,7 @@ import {
 import { RequesterProvider, useRequesterContext } from './requester-context';
 import { CreateTicketPage } from './CreateTicketPage';
 import { MyTicketsPage } from './MyTicketsPage';
+import { TicketDetailPage } from './TicketDetailPage';
 
 type HealthState = 'idle' | 'checking' | 'online' | 'offline';
 type CategoryState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -336,7 +337,7 @@ function RoutedApplication() {
       <Route element={<ProtectedRoutes />}>
         <Route path="/tickets" element={<MyTicketsPage />} />
         <Route path="/tickets/new" element={<CreateTicketPage />} />
-        <Route path="/tickets/:ticketId" element={<PlaceholderPage title="Ticket Detail" description="Ticket detail will be added in the next Lab 2 increment." />} />
+        <Route path="/tickets/:ticketId" element={<TicketDetailPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

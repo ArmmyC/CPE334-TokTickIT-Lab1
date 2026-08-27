@@ -81,6 +81,12 @@ export type TicketRecord = {
   updatedAt: Date;
 };
 
+export type TicketDetailRecord = TicketRecord & {
+  requester: DevelopmentRequesterRecord;
+  category: CategoryRecord;
+  relatedSystem: RelatedSystemRecord;
+};
+
 export type AttachmentRecord = {
   id: number;
   ticketId: number;
@@ -182,6 +188,16 @@ export type TicketApiDatabase = {
   attachment: {
     count(args: { where: { ticketId: number; removedAt: null } }): Promise<number>;
     create(args: { data: Record<string, unknown> }): Promise<AttachmentRecord>;
+    findUnique?(args: { where: { id: number } }): Promise<AttachmentRecord | null>;
+    findMany?(args: {
+      where: { ticketId: number };
+      orderBy?: { uploadedAt: 'asc' | 'desc' };
+      select?: Record<string, unknown>;
+    }): Promise<AttachmentRecord[]>;
+    update?(args: {
+      where: { id: number };
+      data: { removedAt: Date; removalReason: string };
+    }): Promise<AttachmentRecord>;
   };
 };
 
@@ -221,7 +237,7 @@ class TicketValidationError extends Error {
 }
 
 class AttachmentRequestError extends Error {
-  constructor(public readonly status: 400 | 404 | 413 | 415, message: string) {
+  constructor(public readonly status: 400 | 404 | 409 | 413 | 415, message: string) {
     super(message);
   }
 }
@@ -435,6 +451,24 @@ function serializeTicket(ticket: TicketRecord) {
   };
 }
 
+function serializeTicketDetail(ticket: TicketDetailRecord) {
+  return {
+    id: ticket.id,
+    ticketNumber: ticket.ticketNumber,
+    ticketDate: ticket.ticketDate,
+    requester: ticket.requester,
+    category: ticket.category,
+    relatedSystem: ticket.relatedSystem,
+    summary: ticket.summary,
+    description: ticket.description,
+    requestedPriority: ticket.requestedPriority,
+    itPriority: ticket.itPriority,
+    currentStatus: ticket.currentStatus,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt,
+  };
+}
+
 function serializeAttachment(attachment: AttachmentRecord) {
   return {
     id: attachment.id,
@@ -465,6 +499,27 @@ function validateAttachmentFile(file: Express.Multer.File): void {
   if (path.basename(file.originalname).length > 255) {
     throw new AttachmentRequestError(400, 'The attachment filename is too long.');
   }
+}
+
+function attachmentContentDisposition(originalName: string, disposition: 'inline' | 'attachment'): string {
+  const safeName = path.basename(originalName.replaceAll('\\', '/')).replace(/["\r\n]/g, '_') || 'attachment';
+  return `${disposition}; filename="${safeName}"`;
+}
+
+function parseAttachmentRequesterId(value: unknown): number {
+  const requesterId = parsePositiveInteger(value);
+  if (requesterId === null) {
+    throw new AttachmentRequestError(400, 'A valid requesterId is required.');
+  }
+  return requesterId;
+}
+
+function parseAttachmentId(value: unknown): number {
+  const attachmentId = parsePositiveInteger(value);
+  if (attachmentId === null) {
+    throw new AttachmentRequestError(400, 'A valid attachmentId is required.');
+  }
+  return attachmentId;
 }
 
 export function createApp(
@@ -685,6 +740,78 @@ export function createApp(
     }
   });
 
+  app.get('/api/tickets/:ticketId', async (request, response) => {
+    try {
+      if (!database.ticket?.findUnique || !database.attachment?.findMany) {
+        throw new Error('Ticket detail database access is unavailable.');
+      }
+
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      const requesterId = parseAttachmentRequesterId(request.query.requesterId);
+      if (ticketId === null) {
+        throw new AttachmentRequestError(400, 'A valid ticketId is required.');
+      }
+
+      const ticketDetailDatabase = database.ticket as unknown as {
+        findUnique(args: {
+          where: { id: number };
+          select: Record<string, unknown>;
+        }): Promise<TicketDetailRecord | null>;
+      };
+      const ticket = await ticketDetailDatabase.findUnique({
+        where: { id: ticketId },
+        select: {
+          id: true,
+          ticketNumber: true,
+          ticketDate: true,
+          requesterId: true,
+          requester: { select: { id: true, name: true, email: true } },
+          category: { select: { id: true, name: true } },
+          relatedSystem: { select: { id: true, name: true } },
+          summary: true,
+          description: true,
+          requestedPriority: true,
+          itPriority: true,
+          currentStatus: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      if (!ticket || ticket.requesterId !== requesterId) {
+        response.status(404).json({ error: 'Ticket not found.' });
+        return;
+      }
+
+      const attachments = await database.attachment.findMany({
+        where: { ticketId },
+        orderBy: { uploadedAt: 'asc' },
+        select: {
+          id: true,
+          ticketId: true,
+          originalName: true,
+          storageKey: true,
+          mimeType: true,
+          sizeBytes: true,
+          uploadedAt: true,
+          removedAt: true,
+          removalReason: true,
+        },
+      });
+
+      response.status(200).json({
+        ticket: serializeTicketDetail(ticket),
+        attachments: attachments.map(serializeAttachment),
+      });
+    } catch (error) {
+      if (error instanceof AttachmentRequestError) {
+        response.status(error.status).json({ error: error.message });
+        return;
+      }
+      console.error('TokTickIT ticket detail API error:', error);
+      response.status(500).json({ error: 'Unable to load Ticket Detail.' });
+    }
+  });
+
   app.post('/api/tickets', async (request, response) => {
     try {
       const input = validateCreateTicketPayload(request.body);
@@ -835,6 +962,135 @@ export function createApp(
       }
       console.error('TokTickIT attachment upload API error:', error);
       response.status(500).json({ error: 'Unable to upload the attachment.' });
+    }
+  });
+
+  const findOwnedAttachment = async (attachmentId: number, requesterId: number): Promise<AttachmentRecord | null> => {
+    if (!database.ticket?.findUnique || !database.attachment?.findUnique) {
+      throw new Error('Attachment database access is unavailable.');
+    }
+
+    const attachment = await database.attachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment) {
+      return null;
+    }
+
+    const ticket = await database.ticket.findUnique({
+      where: { id: attachment.ticketId },
+      select: { id: true, requesterId: true },
+    });
+    if (!ticket || ticket.requesterId !== requesterId) {
+      return null;
+    }
+
+    return attachment;
+  };
+
+  app.get('/api/attachments/:attachmentId', async (request, response) => {
+    try {
+      const attachmentId = parseAttachmentId(request.params.attachmentId);
+      const requesterId = parseAttachmentRequesterId(request.query.requesterId);
+      const attachment = await findOwnedAttachment(attachmentId, requesterId);
+      if (!attachment) {
+        response.status(404).json({ error: 'Attachment not found.' });
+        return;
+      }
+
+      response.status(200).json({ attachment: serializeAttachment(attachment) });
+    } catch (error) {
+      if (error instanceof AttachmentRequestError) {
+        response.status(error.status).json({ error: error.message });
+        return;
+      }
+      console.error('TokTickIT attachment metadata API error:', error);
+      response.status(500).json({ error: 'Unable to load the attachment.' });
+    }
+  });
+
+  app.get('/api/attachments/:attachmentId/download', async (request, response) => {
+    try {
+      const attachmentId = parseAttachmentId(request.params.attachmentId);
+      const requesterId = parseAttachmentRequesterId(request.query.requesterId);
+      const dispositionValue = request.query.disposition;
+      if (dispositionValue !== undefined && dispositionValue !== 'inline' && dispositionValue !== 'attachment') {
+        throw new AttachmentRequestError(400, 'Disposition must be inline or attachment.');
+      }
+      const disposition = dispositionValue === 'inline' ? 'inline' : 'attachment';
+      const attachment = await findOwnedAttachment(attachmentId, requesterId);
+      if (!attachment || attachment.removedAt !== null) {
+        response.status(404).json({ error: 'Attachment not found.' });
+        return;
+      }
+
+      let bytes: Buffer;
+      try {
+        bytes = await attachmentStorage.read(attachment.storageKey);
+      } catch (readError) {
+        if (isRecord(readError) && readError.code === 'ENOENT') {
+          response.status(404).json({ error: 'Attachment not found.' });
+          return;
+        }
+        throw readError;
+      }
+
+      response
+        .status(200)
+        .set({
+          'Content-Type': attachment.mimeType,
+          'Content-Disposition': attachmentContentDisposition(attachment.originalName, disposition),
+          'Content-Length': String(bytes.length),
+          'X-Content-Type-Options': 'nosniff',
+          'Cache-Control': 'private, no-store',
+        })
+        .send(bytes);
+    } catch (error) {
+      if (error instanceof AttachmentRequestError) {
+        response.status(error.status).json({ error: error.message });
+        return;
+      }
+      console.error('TokTickIT attachment download API error:', error);
+      response.status(500).json({ error: 'Unable to download the attachment.' });
+    }
+  });
+
+  app.delete('/api/attachments/:attachmentId', async (request, response) => {
+    try {
+      if (!database.attachment?.update) {
+        throw new Error('Attachment database access is unavailable.');
+      }
+      const attachmentId = parseAttachmentId(request.params.attachmentId);
+      const requesterId = parseAttachmentRequesterId(request.body?.requesterId);
+      const removalReason = typeof request.body?.removalReason === 'string'
+        ? request.body.removalReason.trim()
+        : '';
+      if (removalReason.length < 5 || removalReason.length > 500) {
+        throw new AttachmentRequestError(400, 'Removal reason must be between 5 and 500 characters.');
+      }
+
+      const attachment = await findOwnedAttachment(attachmentId, requesterId);
+      if (!attachment) {
+        response.status(404).json({ error: 'Attachment not found.' });
+        return;
+      }
+      if (attachment.removedAt !== null) {
+        throw new AttachmentRequestError(409, 'This attachment has already been removed.');
+      }
+
+      const updatedAttachment = await database.attachment.update({
+        where: { id: attachmentId },
+        data: {
+          removedAt: new Date(),
+          removalReason,
+        },
+      });
+      response.status(200).json({ attachment: serializeAttachment(updatedAttachment) });
+    } catch (error) {
+      if (error instanceof AttachmentRequestError) {
+        response.status(error.status).json({ error: error.message });
+        return;
+      }
+      console.error('TokTickIT attachment removal API error:', error);
+      response.status(500).json({ error: 'Unable to remove the attachment.' });
     }
   });
 
