@@ -14,11 +14,17 @@
     "build": "npm run build --workspace server && npm run build --workspace client",
     "test": "npm run test --workspace server && npm run test --workspace client",
     "db:up": "docker compose up -d db",
+    "db:test:up": "docker compose --env-file .env.test up -d db-test",
     "db:down": "docker compose down",
     "db:reset": "npm run prisma:reset --workspace server",
-    "db:seed": "npm run prisma:seed --workspace server"
+    "db:seed": "npm run prisma:seed --workspace server",
+    "test:db:prepare": "node scripts/test-db-prepare.mjs",
+    "e2e:server": "dotenv -e .env.test -- npm run e2e --workspace server",
+    "e2e:client": "npm run dev --workspace client -- --host 127.0.0.1",
+    "test:e2e": "npm run db:test:up && npm run test:db:prepare && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "dotenv-cli": "^8.0.0",
     "npm-run-all": "^4.1.5"
   }
