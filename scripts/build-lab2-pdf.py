@@ -7,6 +7,7 @@ import html
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -404,9 +405,7 @@ def build(output: Path) -> None:
 
     if not re.search(r"^Answer Part 1", github_evidence, re.MULTILINE):
         raise EvidenceError("github-evidence.md must contain final release evidence")
-    for part in range(1, 10):
-        if part not in range(1, 10):
-            raise EvidenceError("invalid part")
+    expected_part_headings = [f"Answer Part {part}" for part in range(1, 10)]
 
     create_paths = screenshot_files(
         "create-ticket",
@@ -515,6 +514,16 @@ def build(output: Path) -> None:
     story.append(Paragraph("The required color tokens are Primary `#006B3C`, Secondary `#0B7A46`, Pale `#EAF6EF`, and page background `#F5F7F6`. The visual checklist records field states, button hierarchy, validation placement, clipping, overlap, and horizontal overflow checks.", styles["body"]))
     story.append(Paragraph("The screenshot groups include desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844` evidence. The final E2E run checked horizontal overflow at each major screen.", styles["body"]))
 
+    actual_part_headings = [
+        flowable.getPlainText().strip()
+        for flowable in story
+        if isinstance(flowable, Paragraph) and flowable.getPlainText().strip().startswith("Answer Part ")
+    ]
+    if actual_part_headings != expected_part_headings:
+        raise EvidenceError(
+            "document headings must be Answer Part 1 through Answer Part 9 in order"
+        )
+
     def footer(canvas, doc):
         canvas.saveState()
         canvas.setStrokeColor(colors.HexColor("#B7CEC3"))
@@ -537,7 +546,7 @@ def main() -> int:
     try:
         build(output)
     except EvidenceError as error:
-        print(f"Evidence error: {error}", file=os.sys.stderr)
+        print(f"Evidence error: {error}", file=sys.stderr)
         return 2
     print(f"Wrote {output}")
     return 0
