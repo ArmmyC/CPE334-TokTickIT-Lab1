@@ -85,7 +85,7 @@ npm run test:e2e
 
 Database-dependent checks additionally require Docker PostgreSQL, Prisma migration, and the repeatable seed command documented in `README.md`.
 
-The E2E environment uses a dedicated `db-test` PostgreSQL service on host port `5434` and an uncommitted `.env.test` copied from `.env.test.example`. Its `DATABASE_URL` points only to `toktickit_test`. Before any destructive command, `test:db:prepare` parses `DATABASE_URL` and requires its database pathname to equal `/toktickit_test`; missing, malformed, or differently named database URLs hard-fail with a non-zero exit. Only after that guard passes may the command reset, deploy migrations, and seed the test database before Playwright starts the API and client.
+The E2E environment uses a dedicated `db-test` PostgreSQL service on host port `5434` and an uncommitted `.env.test` copied from `.env.test.example`. Its `DATABASE_URL` points only to `toktickit_test`. Before any destructive command, `test:db:prepare` parses `DATABASE_URL` and requires its database pathname to equal `/toktickit_test`, missing, malformed, or differently named database URLs hard-fail with a non-zero exit. Only after that guard passes may the command reset, deploy migrations, and seed the test database before Playwright starts the API and client.
 
 Required final command sequence:
 
@@ -97,7 +97,7 @@ npm run build
 npm run test:e2e
 ```
 
-Playwright projects use desktop `1440x900`, tablet `834x1112`, and mobile `390x844`. Failure/loading UI tests use controlled API responses; success, persistence, ownership, and attachment E2E scenarios use the dedicated PostgreSQL database.
+Playwright projects use desktop `1440x900`, tablet `834x1112`, and mobile `390x844`. Failure/loading UI tests use controlled API responses, while success, persistence, ownership, and attachment E2E scenarios use the dedicated PostgreSQL database.
 
 ## 6. Issue 19 Verification Results
 
@@ -117,6 +117,23 @@ The final dedicated database check returned 4 active Categories, 7 active Relate
 
 Evidence files are real Playwright PNGs under `artifacts/lab-02/screenshots/create-ticket/`, `artifacts/lab-02/screenshots/my-tickets/`, and `artifacts/lab-02/screenshots/ticket-detail/`. Each required viewport has success, filtered list, owned detail, attachment lifecycle, and ownership rejection evidence. Create Ticket state screenshots also include initial, validation, invalid attachment, API failure with retained values, submitting, and success.
 
-## 7. Known Limitations or Deferred Tests
+## 7. Issue 20 documentation-branch verification
+
+Verification on 2026-08-28 from `docs/lab2-delivery`, based on the Bank848 merge of PR #27 into `lab2-staging` at `af94ee0`:
+
+| Check | Result |
+| --- | --- |
+| `npm run db:test:up` | Pass, dedicated PostgreSQL test service running on port 5434 |
+| `npm run test:db:prepare` | Pass, guarded reset, migrations, and idempotent seed completed |
+| `npm test` | Pass, 8 server files and 57 tests, 6 client files and 28 tests |
+| `npm run build` | Pass, server TypeScript and client Vite build |
+| `npm run test:e2e` | Pass, desktop, tablet, and mobile projects, 3 tests |
+| `git diff --check` | Pass |
+| Dedicated seed query | Pass, 4 active Categories, 7 active Related Systems, 4 active Requesters, 1 inactive Requester, 3 Tickets |
+| Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and PDF output remain ignored |
+
+This section records the docs-branch verification only. The final-main rerun and the staging-to-main release evidence are added after Bank848 merges the documentation PR and the required release PR.
+
+## 8. Known Limitations or Deferred Tests
 
 Only genuine, reviewed limitations may be listed here. Lab 3 authentication, IT Staff workflow, comments, Actions Taken, and later Ticket status transitions are intentionally deferred because they are outside Lab 2 scope.

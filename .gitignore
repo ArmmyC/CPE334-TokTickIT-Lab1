@@ -13,3 +13,6 @@ Thumbs.db
 server/storage/attachments/
 playwright-report/
 test-results/
+tmp/pdfs/
+output/pdf/
+artifacts/lab-02/screenshots/submission/
