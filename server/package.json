@@ -11,9 +11,11 @@
     "test:watch": "vitest",
     "prisma:generate": "dotenv -e ../.env -- prisma generate",
     "prisma:migrate": "dotenv -e ../.env -- prisma migrate dev --name lab_01_foundation",
+    "prisma:migrate:lab2": "dotenv -e ../.env -- prisma migrate dev --name lab_02_data_model",
     "prisma:deploy": "dotenv -e ../.env -- prisma migrate deploy",
     "prisma:seed": "dotenv -e ../.env -- prisma db seed",
-    "prisma:reset": "dotenv -e ../.env -- prisma migrate reset --force"
+    "prisma:reset": "dotenv -e ../.env -- prisma migrate reset --force",
+    "e2e": "tsx src/server.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -22,11 +24,13 @@
     "@prisma/client": "^6.15.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "multer": "^2.2.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/multer": "^2.2.0",
     "@types/node": "^24.3.0",
     "@types/supertest": "^6.0.3",
     "prisma": "^6.15.0",

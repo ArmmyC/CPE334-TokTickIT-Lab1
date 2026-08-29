@@ -24,6 +24,7 @@ describe('TokTickIT categories API', () => {
       { id: 4, name: 'Network' },
     ]);
     expect(findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
       select: { id: true, name: true },
       orderBy: { id: 'asc' },
     });
