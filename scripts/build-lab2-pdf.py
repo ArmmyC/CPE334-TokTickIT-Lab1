@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "output" / "pdf" / "CPE334_Lab2_67070501002.pdf"
 FINAL_VERIFICATION = ROOT / "tmp" / "pdfs" / "final-verification.txt"
 SUBMISSION_EVIDENCE = ROOT / "tmp" / "pdfs" / "github-evidence.md"
+MAX_SCREENSHOT_HEIGHT = 3.1 * inch
 
 
 class EvidenceError(RuntimeError):
@@ -329,7 +330,12 @@ def image_cell(path: Path, width: float, caption: str, styles) -> Table:
     with PILImage.open(path) as image:
         source_width, source_height = image.size
     height = width * source_height / source_width
-    image_flowable = Image(str(path), width=width, height=height)
+    image_width = width
+    if height > MAX_SCREENSHOT_HEIGHT:
+        image_width = width * MAX_SCREENSHOT_HEIGHT / height
+        height = MAX_SCREENSHOT_HEIGHT
+    image_flowable = Image(str(path), width=image_width, height=height)
+    image_flowable.hAlign = "CENTER"
     table = Table([[image_flowable], [Paragraph(escape_inline(caption), styles["caption"])]], colWidths=[width])
     table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
