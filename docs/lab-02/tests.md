@@ -111,7 +111,7 @@ Fresh verification on 2026-08-28, branch `feature/7-lab2-e2e-visual`, after PR #
 | `npm run test:e2e` | Dedicated test database, Express API, Vite client, Playwright | Pass, 3 tests, desktop 1440x900, tablet 834x1112, mobile 390x844 |
 | `git diff --check` | Repository working tree | Pass, no whitespace errors |
 
-The E2E command starts `db-test`, runs the guarded reset, migration, and idempotent seed, then starts the API and client. No tests were skipped or disabled. This is Issue 19 branch evidence, and the release PR to `main` still requires its own final rerun.
+The E2E command starts `db-test`, runs the guarded reset, migration, and idempotent seed, then starts the API and client. No tests were skipped or disabled. This is Issue 19 branch evidence. The final-main rerun is recorded below.
 
 The final dedicated database check returned 4 active Categories, 7 active Related Systems, 4 active Development Requesters, 1 inactive Development Requester, and 3 E2E-created Tickets owned by the active requester.
 
@@ -132,8 +132,26 @@ Verification on 2026-08-28 from `docs/lab2-delivery`, based on the Bank848 merge
 | Dedicated seed query | Pass, 4 active Categories, 7 active Related Systems, 4 active Requesters, 1 inactive Requester, 3 Tickets |
 | Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and PDF output remain ignored |
 
-This section records the docs-branch verification only. The final-main rerun and the staging-to-main release evidence are added after Bank848 merges the documentation PR and the required release PR.
+This section records the docs-branch verification before the staging-to-main release. The release evidence and final-main rerun are recorded in the next section.
 
-## 8. Known Limitations or Deferred Tests
+## 8. Final-main verification
+
+Fresh verification on 2026-08-29, branch `main`, at release merge `a897111`:
+
+| Check | Environment | Result |
+| --- | --- | --- |
+| `npm run db:test:up` | Docker `db-test`, PostgreSQL 16, host port 5434 | Pass, dedicated PostgreSQL test service running |
+| `npm run test:db:prepare` | `toktickit_test` on port 5434 | Pass, guarded reset, migrations, and idempotent seed completed |
+| `npm test` | Node.js workspace, server and client Vitest | Pass, 8 server files and 57 tests, 6 client files and 28 tests |
+| `npm run build` | TypeScript and Vite production build | Pass, server TypeScript and client Vite build |
+| `npm run test:e2e` | Dedicated test database, Express API, Vite client, Playwright | Pass, 3 tests, desktop 1440x900, tablet 834x1112, mobile 390x844 |
+| Dedicated seed query | `toktickit_test` after E2E | Pass, 4 active Categories, 7 active Related Systems, 4 active Requesters, 1 inactive Requester, 3 Tickets |
+| `git diff --check` | Final-main working tree before generated screenshot refresh | Pass, no whitespace errors |
+
+The final-main run completed after Bank848 approved and merged release PR [#29](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/29) as commit [a897111](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/a8971114eaf38f3905da515cc242c944f46cc4e3). The E2E suite produced the required desktop, tablet, and mobile checks. The committed screenshot set remains the reviewed evidence set, while timestamped local reruns are kept out of Git.
+
+The final-main source audit also confirmed that `.env.test`, attachment bytes, Playwright reports, test results, and PDF output remain ignored. No tests were skipped or disabled.
+
+## 9. Known Limitations or Deferred Tests
 
 Only genuine, reviewed limitations may be listed here. Lab 3 authentication, IT Staff workflow, comments, Actions Taken, and later Ticket status transitions are intentionally deferred because they are outside Lab 2 scope.

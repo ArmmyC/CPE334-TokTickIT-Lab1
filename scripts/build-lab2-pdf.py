@@ -370,8 +370,8 @@ def add_link_table(story: list[Flowable], styles) -> None:
         [Paragraph("Repository", styles["table"]), Paragraph("<link href='https://github.com/ArmmyC/CPE334-TokTickIT-Lab1' color='#0B7A46'>github.com/ArmmyC/CPE334-TokTickIT-Lab1</link>", styles["table"])],
         [Paragraph("Project board", styles["table"]), Paragraph("<link href='https://github.com/users/ArmmyC/projects/3' color='#0B7A46'>TokTickIT Individual Sprints</link>", styles["table"])],
         [Paragraph("Lab 2 contract PR", styles["table"]), Paragraph("<link href='https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/21' color='#0B7A46'>PR #21</link>", styles["table"])],
-        [Paragraph("Documentation PR", styles["table"]), Paragraph("Issue #20 documentation PR is recorded in reviewer.md after creation", styles["table"])],
-        [Paragraph("Release PR", styles["table"]), Paragraph("The final staging-to-main URL is recorded in github-evidence.md", styles["table"])],
+        [Paragraph("Documentation PR", styles["table"]), Paragraph("<link href='https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/28' color='#0B7A46'>PR #28</link>", styles["table"])],
+        [Paragraph("Release PR", styles["table"]), Paragraph("<link href='https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/29' color='#0B7A46'>PR #29</link>", styles["table"])],
     ]
     table = Table(rows, colWidths=[1.55 * inch, 5.1 * inch], repeatRows=1)
     table.setStyle(TableStyle([
