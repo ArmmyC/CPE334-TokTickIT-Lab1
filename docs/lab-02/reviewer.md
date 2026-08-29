@@ -21,7 +21,7 @@
 - Lab 2 integration branch: `lab2-staging`
 - Required status order: `Backlog`, `Specified`, `Started`, `PR Review`, `Fixing`, `Done`
 - Every implementation PR was opened from its Issue branch to `lab2-staging`, linked through the PR Development panel, reviewed by Bank848, and merged by Bank848.
-- Issue #19 was moved to `Done` and closed after Bank848 merged PR #27. Issue #20 is the active documentation increment on `docs/lab2-delivery`.
+- Issue #19 was moved to `Done` and closed after Bank848 merged PR #27. Issue #20 followed the same workflow on `docs/lab2-delivery`, then the staging branch was released to `main`.
 
 ## Lab 2 Pull Requests
 
@@ -34,8 +34,8 @@
 | [#17 My Tickets](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/17) | [PR #25](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/25) | `feature/5-lab2-my-tickets` | `lab2-staging` | Bank848 | Approved and merged | [1238dd4](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/1238dd43dd100ab0b13b59881e2539b4eedfd369) |
 | [#18 Detail and attachments](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/18) | [PR #26](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/26) | `feature/6-lab2-ticket-detail-attachments` | `lab2-staging` | Bank848 | Approved and merged | [6f7c3d3](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/6f7c3d3ce22dad9d0591b9b1ec14bee481c1d9e1) |
 | [#19 E2E and visual](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/19) | [PR #27](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/27) | `feature/7-lab2-e2e-visual` | `lab2-staging` | Bank848 | Approved and merged | [af94ee0](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/af94ee00681fe562ad588900988aa822c8606741) |
-| [#20 Documentation and delivery](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/20) | This docs-only PR | `docs/lab2-delivery` | `lab2-staging` | Bank848 | In progress at this commit | To be recorded after the PR is opened |
-| Release | Required staging-to-main PR | `lab2-staging` | `main` | Bank848 | Required after Issue #20 | To be recorded after the release merge |
+| [#20 Documentation and delivery](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/20) | [PR #28](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/28) | `docs/lab2-delivery` | `lab2-staging` | Bank848 | Approved and merged | [c9a6140](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/c9a61408887e6a0ed6dcf9d3b200cc4c1f9b14d9) |
+| Release | [PR #29](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/29) | `lab2-staging` | `main` | Bank848 | Approved and merged | [a897111](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/a8971114eaf38f3905da515cc242c944f46cc4e3) |
 
 ## Comments received on our Lab 2 PRs
 
@@ -48,6 +48,8 @@ The links below are the real PR conversations. The summaries preserve the techni
 - [PR #25 My Tickets review](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/25): Bank848 noted that search requests are sent on every keystroke without debounce. I recorded it as a future performance improvement outside the approved Lab 2 scope. The PR was approved and merged.
 - [PR #26 Ticket Detail and attachment review](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/26): Bank848 confirmed ownership checks, removed-file blocking, safe 404 behavior, storage-key privacy, and the removal-dialog focus trap, with no blocking issues. I replied that the review was recorded and no changes were requested. Bank848 approved and merged the PR.
 - [PR #27 E2E and visual review](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/27): Bank848 confirmed the guarded test database, real isolated E2E flow, attachment and ownership coverage, screenshots, and traceability documents, with no blocking issues. I replied, “Thanks for reviewing and confirming there are no blocking issues. Issue #19 remains in PR Review pending your merge.” Bank848 then merged commit [af94ee0](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/af94ee00681fe562ad588900988aa822c8606741).
+- [PR #28 documentation and delivery review](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/28): Bank848 approved the docs-only increment and recorded two non-blocking PDF-builder nits, the no-op part loop and the indirect `os.sys.stderr` reference. I replied to each thread before correcting the builder in commit [e3f6fa6](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/e3f6fa662ef2f08396527e4880de7f4115372087). The corrected PR was merged by Bank848 as [c9a6140](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/c9a61408887e6a0ed6dcf9d3b200cc4c1f9b14d9).
+- [PR #29 release review](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/29): Bank848 compared `main...lab2-staging`, confirmed that the eight commits matched PRs #21 through #28, and approved the release with no requested changes. I replied with the verification record before Bank848 merged [a897111](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/a8971114eaf38f3905da515cc242c944f46cc4e3) into `main`.
 
 ## Peer review performed on Bank848's repository
 
@@ -60,9 +62,9 @@ The links below are the real PR conversations. The summaries preserve the techni
 
 ## Review rule audit
 
-- Bank848 submitted the approving review for PRs #21 through #27.
-- Bank848 performed every Lab 2 feature merge into `lab2-staging`.
+- Bank848 submitted the approving review for PRs #21 through #29.
+- Bank848 performed every Lab 2 feature merge into `lab2-staging` and the final release merge into `main`.
 - Author replies are present in the review conversations, including the response on PR #27.
 - Issue links are visible in each PR Development panel.
-- Issue #19 is closed after its merged PR and has project status `Done`.
-- Issue #20 must complete its own reviewed docs PR before the final release PR is opened.
+- Issues #13 through #20 are closed and have project status `Done`.
+- The single release PR from `lab2-staging` to `main` is PR #29, approved and merged by Bank848.
