@@ -130,7 +130,7 @@ Verification on 2026-08-28 from `docs/lab2-delivery`, based on the Bank848 merge
 | `npm run test:e2e` | Pass, desktop, tablet, and mobile projects, 3 tests |
 | `git diff --check` | Pass |
 | Dedicated seed query | Pass, 4 active Categories, 7 active Related Systems, 4 active Requesters, 1 inactive Requester, 3 Tickets |
-| Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and PDF output remain ignored |
+| Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and any local Answer Sheet output remain outside Git |
 
 This section records the docs-branch verification before the staging-to-main release. The release evidence and final-main rerun are recorded in the next section.
 
@@ -150,7 +150,7 @@ Fresh verification on 2026-08-29, branch `main`, at release merge `a897111`:
 
 The final-main run completed after Bank848 approved and merged release PR [#29](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/29) as commit [a897111](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/a8971114eaf38f3905da515cc242c944f46cc4e3). The E2E suite produced the required desktop, tablet, and mobile checks. The committed screenshot set remains the reviewed evidence set, while timestamped local reruns are kept out of Git.
 
-The final-main source audit also confirmed that `.env.test`, attachment bytes, Playwright reports, test results, and PDF output remain ignored. No tests were skipped or disabled.
+The final-main source audit also confirmed that `.env.test`, attachment bytes, Playwright reports, test results, and any local Answer Sheet output remain outside Git. No tests were skipped or disabled.
 
 ## 9. Known Limitations or Deferred Tests
 

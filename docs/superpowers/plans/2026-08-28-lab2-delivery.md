@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Complete Issue #20 with evidence-backed Lab 2 documentation, review records, AI-use reflection, README and ignore-file guidance, and one A4 portrait PDF submission generated from the final repository evidence.
+**Goal:** Complete Issue #20 with evidence-backed Lab 2 documentation, review records, AI-use reflection, README and ignore-file guidance, and hand off one A4 portrait Answer Sheet for submission outside the repository.
 
-**Architecture:** Start from the merged `origin/lab2-staging` commit `af94ee0` on the exact `docs/lab2-delivery` branch. Record only real GitHub workflow events and repository outputs, keep the PDF builder reproducible, and generate the final submission PDF after the staging-to-main release merge so it can cite final-main evidence without fabricating future events.
+**Architecture:** Start from the merged `origin/lab2-staging` commit `af94ee0` on the exact `docs/lab2-delivery` branch. Record only real GitHub workflow events and repository outputs, keep the required repository evidence in Git, and prepare the individual Answer Sheet outside the repository after final-main verification.
 
-**Tech Stack:** Markdown, Git, GitHub Project and Pull Requests, Node.js npm workspaces, PostgreSQL, Prisma, Vitest, Playwright, Python ReportLab, pdfplumber, pypdf, and Poppler.
+**Tech Stack:** Markdown, Git, GitHub Project and Pull Requests, Node.js npm workspaces, PostgreSQL, Prisma, Vitest, and Playwright. The Answer Sheet is prepared outside the repository.
 
 **Spec:** `docs/lab-02/specification.md`, `docs/lab-02/tests.md`, `docs/lab-02/ui-spec.md`, `docs/lab-02/api-spec.md`, `Instruction/Instruction.md`, `Instruction/CPE334_Codex_Lab_Workflow_Instructions.md`, and `Lab 2/Lab_02_labsheet.pdf`.
 
@@ -16,7 +16,7 @@
 - The documentation PR targets `lab2-staging`, is linked to Issue #20, and is reviewed and merged by Bank848.
 - The release PR is the single `lab2-staging` to `main` PR required by the Lab 2 sheet, and Bank848 must approve and merge it.
 - Do not claim a review, approval, merge, test, screenshot, or final-main state until it is visible or reproducible.
-- Use the exact PDF headings `Answer Part 1` through `Answer Part 9` in order and generate exactly `output/pdf/CPE334_Lab2_67070501002.pdf`.
+- Use the exact Answer Sheet headings `Answer Part 1` through `Answer Part 9` in order when preparing the external submission.
 - Use ASCII hyphens in new documentation and generated PDF text.
 - Do not add authentication, IT Staff controls, comments, Actions Taken, or post-creation status transitions.
 
@@ -71,24 +71,18 @@
 - [x] Keep Playwright reports, test results, build output, coverage, and local storage ignored.
 - [x] Check all links and commands against the current package scripts and repository paths.
 
-### Task 5: Reproducible PDF evidence builder
+### Task 5: External Answer Sheet preparation
 
 **Files:**
-- Create: `scripts/build-lab2-pdf.py`
-- Create during final generation: `output/pdf/CPE334_Lab2_67070501002.pdf`
-- Create only as temporary QA output: `tmp/pdfs/` and rendered page PNGs
+- No repository files. The Answer Sheet and its rendering intermediates remain outside Git.
 
-- [x] Define a ReportLab A4 portrait document with a stable title page, footer page numbers, compact typography, readable tables, and exact headings `Answer Part 1` through `Answer Part 9`.
-- [x] Add helpers for Markdown paragraphs, code blocks, evidence tables, hyperlinks, image captions, and bounded screenshot placement that preserves aspect ratio.
-- [x] Populate Part 1 with final-main Git history, Project board evidence, `reviewer.md`, README, `.gitignore`, repository structure, and genuine GitHub URLs.
-- [x] Populate Parts 2 through 4 with rendered specification, test-traceability, and AI-use content, including the pre-implementation contract evidence.
-- [x] Populate Parts 5 through 8 with requester selection, Create Ticket states, requester isolation, My Tickets queries, Ticket Detail, and attachment lifecycle screenshots and captions.
-- [x] Populate Part 9 with rendered `ui-spec.md`, the four exact Zen Green tokens, the visual checklist, and desktop, tablet, and mobile screenshots.
-- [x] Fail the builder if any required source file, evidence image, heading, or URL is missing, and never synthesize review or merge text.
+- [x] Prepare one concise A4 portrait Answer Sheet with the exact headings `Answer Part 1` through `Answer Part 9`.
+- [x] Use only real repository links, review evidence, test output, screenshots, and captions.
+- [x] Keep the Answer Sheet, PDF, and rendering intermediates outside the repository and submit them on the course platform.
 
 ### Task 6: Documentation verification and PR handoff
 
-**Files:** existing documentation and generated builder from Tasks 2 through 5
+**Files:** existing repository documentation and evidence
 
 - [ ] Run `npm run db:test:up`, `npm run test:db:prepare`, `npm test`, `npm run build`, `npm run test:e2e`, and `git diff --check` from the docs branch.
 - [ ] Confirm `.env.test`, local storage bytes, Playwright output, and temporary PDF renders are not tracked.
@@ -97,26 +91,24 @@
 - [ ] Reply to every review comment before any correction or merge. If changes are requested, move `PR Review` to `Fixing`, correct the same branch, rerun affected checks, push, reply, and return to `PR Review`.
 - [ ] Leave the documentation merge to Bank848, then move Issue #20 to `Done` and close it after the actual merge.
 
-### Task 7: Release integration and final PDF
+### Task 7: Release integration and external Answer Sheet
 
-**Files:** final-main evidence and local submission output
+**Files:** final-main evidence and external submission output
 
 - [ ] After Issues #13 through #20 are Done, verify the final Project board and staging branch, then open exactly one release PR from `lab2-staging` to `main`.
 - [ ] Link and request Bank848 on the release PR, reply to every review comment, and leave approval and merge to Bank848.
 - [ ] After the actual release merge, switch to `main`, pull the merge, rerun migrations, seed verification, all tests, build, E2E, and live database checks.
 - [ ] Capture final-main Git history, Project board, release approval and merge, and the final verification output.
-- [ ] Immediately before the first PDF authoring command, run `node container_tools/mark_artifact_operation_started.mjs --operation-kind create --expected-output-count 1 --output-format pdf` exactly once.
-- [ ] Generate exactly `output/pdf/CPE334_Lab2_67070501002.pdf` with all nine headings and no extra PDF output.
-- [ ] Render every PDF page with Poppler, inspect the PNGs for clipping, overlap, unreadable text, broken links, and screenshot captions, then extract text with `pdfplumber` or `pypdf` to verify all headings and required links.
+- [ ] Prepare and inspect the external Answer Sheet with all nine headings, readable screenshots, captions, and working links.
 
 ## Self-Review Checklist
 
 - [ ] Reviewer records contain only genuine GitHub comments, replies, approvals, and merges.
 - [ ] AI-use records contain genuine prompts and a student reflection.
 - [ ] README and `.gitignore` match the merged implementation.
-- [ ] Every PDF part follows the Lab 2 Section 14 checklist and uses real evidence.
-- [ ] The final PDF is exactly one A4 portrait file at the required path.
-- [ ] The final PDF is generated from final-main evidence after the release merge.
+- [ ] Every external Answer Sheet part follows the Lab 2 Section 14 checklist and uses real evidence.
+- [ ] Exactly one A4 portrait Answer Sheet PDF is submitted on the course platform.
+- [ ] The external Answer Sheet uses final-main evidence after the release merge.
 - [ ] No required test is skipped, disabled, or reported without output.
 - [ ] No Lab 3 or IT Staff feature appears in the implementation or evidence.
 - [ ] Issue #20 follows `Backlog -> Specified -> Started -> PR Review -> Done` and is closed after its merge.
