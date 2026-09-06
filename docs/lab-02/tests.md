@@ -12,7 +12,7 @@ Tests must cover happy paths, invalid input, boundaries, ownership, failures, lo
 | --- | --- | --- | --- | --- | --- | --- |
 | UNIT-01 | Unit | BR-02, AC-06 | Ticket Number generation | Format is unique and backend-derived | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
 | UNIT-02 | Unit | BR-12-17, AC-05 | Ticket validation and trimming | Valid values pass, invalid values return field errors | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
-| UNIT-03 | Unit | BR-19-27, AC-07, AC-15 | Attachment validation and removal reason | Type, size, count, and reason rules are enforced | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts` | Pass |
+| UNIT-03 | Unit | BR-19-27, AC-07, AC-15 | Attachment validation and removal reason | Type, size, count, and reason rules are enforced | `server/tests/lab-02/attachments.api.test.ts` | Pass |
 | UNIT-04 | Unit | BR-30, AC-01, AC-04 | Repeatable Lab 2 seed | Required reference data and Requesters are upserted without duplicates | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
 | INFRA-01 | Script safety | BR-43 | Test-database preparation guard | Missing, malformed, and non-`toktickit_test` URLs exit non-zero before any destructive database command, the dedicated test URL may continue | `server/tests/lab-02/test-db-guard.test.ts` | Pass |
 | API-01 | API | AC-01 | Active Requester retrieval | Active Requesters returned, inactive excluded | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
@@ -21,9 +21,9 @@ Tests must cover happy paths, invalid input, boundaries, ownership, failures, lo
 | API-04 | API | AC-05, AC-08 | Invalid and failed creation | Field errors and safe failures, no duplicate submission behavior | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
 | API-05 | API | AC-09-10 | Owned list query | Search, filters, sorting, pagination, metadata, and ownership | `server/tests/lab-02/my-tickets.api.test.ts` | Pass |
 | API-06 | API | AC-11-12 | Owned detail and cross-requester access | Owner succeeds, different requester receives safe 404 | `server/tests/lab-02/ticket-detail.api.test.ts` | Pass |
-| API-07 | API | AC-13-16 | Attachment lifecycle | Upload, metadata, active download, soft removal, blocked removed download | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts` | Pass |
+| API-07 | API | AC-13-16 | Attachment lifecycle | Upload, metadata, active download, soft removal, blocked removed download | `server/tests/lab-02/attachments.api.test.ts` | Pass |
 | API-08 | API | AC-10, AC-19 | List boundaries and invalid queries | Blank search, overlong search, invalid filters, sorts, pages, out-of-range page | `server/tests/lab-02/my-tickets.api.test.ts` | Pass |
-| API-09 | API | AC-07, AC-13-16, AC-20 | Attachment boundaries and failures | Five-file limit, MIME/extension mismatch, 5 MB boundary, compensation, disposition, repeat removal | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts` | Pass |
+| API-09 | API | AC-07, AC-13-16, AC-20 | Attachment boundaries and failures | Five-file limit, MIME/extension mismatch, 5 MB boundary, compensation, disposition, repeat removal | `server/tests/lab-02/attachments.api.test.ts` | Pass |
 | UI-01 | UI | AC-01-03 | Requester selector and shell context | Loading, active list, empty/failure, selection, display, switching | `client/tests/lab-02/CreateTicket.test.tsx` | Pass |
 | UI-02 | UI | AC-04-08 | Create Ticket form | Reference data, field validation, busy, success, failure, invalid file | `client/tests/lab-02/CreateTicket.test.tsx` | Pass |
 | UI-03 | UI | AC-09-10 | My Tickets behavior | List, search, filters, sort, pagination, empty/no-results/failure | `client/tests/lab-02/MyTickets.test.tsx` | Pass |
@@ -111,7 +111,7 @@ Fresh verification on 2026-08-28, branch `feature/7-lab2-e2e-visual`, after PR #
 | `npm run test:e2e` | Dedicated test database, Express API, Vite client, Playwright | Pass, 3 tests, desktop 1440x900, tablet 834x1112, mobile 390x844 |
 | `git diff --check` | Repository working tree | Pass, no whitespace errors |
 
-The E2E command starts `db-test`, runs the guarded reset, migration, and idempotent seed, then starts the API and client. No tests were skipped or disabled. This is Issue 19 branch evidence. The final-main rerun is recorded below.
+The E2E command starts `db-test`, runs the guarded reset, migration, and idempotent seed, then starts the API and client. No tests were skipped or disabled. This is Issue 19 branch evidence, and the release PR to `main` still requires its own final rerun.
 
 The final dedicated database check returned 4 active Categories, 7 active Related Systems, 4 active Development Requesters, 1 inactive Development Requester, and 3 E2E-created Tickets owned by the active requester.
 
@@ -132,7 +132,7 @@ Verification on 2026-08-28 from `docs/lab2-delivery`, based on the Bank848 merge
 | Dedicated seed query | Pass, 4 active Categories, 7 active Related Systems, 4 active Requesters, 1 inactive Requester, 3 Tickets |
 | Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and any local Answer Sheet output remain outside Git |
 
-This section records the docs-branch verification before the staging-to-main release. The release evidence and final-main rerun are recorded in the next section.
+This section records the docs-branch verification only. The final-main evidence below is the historical rerun at release commit `a897111`.
 
 ## 8. Final-main verification
 
@@ -151,6 +151,8 @@ Fresh verification on 2026-08-29, branch `main`, at release merge `a897111`:
 The final-main run completed after Bank848 approved and merged release PR [#29](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/29) as commit [a897111](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/a8971114eaf38f3905da515cc242c944f46cc4e3). The E2E suite produced the required desktop, tablet, and mobile checks. The committed screenshot set remains the reviewed evidence set, while timestamped local reruns are kept out of Git.
 
 The final-main source audit also confirmed that `.env.test`, attachment bytes, Playwright reports, test results, and any local Answer Sheet output remain outside Git. No tests were skipped or disabled.
+
+PR #34 is a later staging-only compliance maintenance change that split attachment coverage into the required dedicated file. The current staging branch therefore needs a fresh verification after this maintenance work is reviewed and promoted.
 
 ## 9. Known Limitations or Deferred Tests
 

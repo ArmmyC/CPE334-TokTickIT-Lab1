@@ -17,7 +17,7 @@
 - The release PR is the single `lab2-staging` to `main` PR required by the Lab 2 sheet, and Bank848 must approve and merge it.
 - Do not claim a review, approval, merge, test, screenshot, or final-main state until it is visible or reproducible.
 - Use the exact Answer Sheet headings `Answer Part 1` through `Answer Part 9` in order when preparing the external submission.
-- Use ASCII hyphens in new documentation and generated PDF text.
+- Use ASCII hyphens in new documentation and external Answer Sheet text.
 - Do not add authentication, IT Staff controls, comments, Actions Taken, or post-creation status transitions.
 
 ---
@@ -85,7 +85,7 @@
 **Files:** existing repository documentation and evidence
 
 - [ ] Run `npm run db:test:up`, `npm run test:db:prepare`, `npm test`, `npm run build`, `npm run test:e2e`, and `git diff --check` from the docs branch.
-- [ ] Confirm `.env.test`, local storage bytes, Playwright output, and temporary PDF renders are not tracked.
+- [ ] Confirm `.env.test`, local storage bytes, Playwright output, and local Answer Sheet files are not tracked.
 - [ ] Commit the docs-only changes with an explanatory message and push only `docs/lab2-delivery`.
 - [ ] Open a PR to `lab2-staging`, link it to Issue #20 through Development, request Bank848, and move Issue #20 to `PR Review`.
 - [ ] Reply to every review comment before any correction or merge. If changes are requested, move `PR Review` to `Fixing`, correct the same branch, rerun affected checks, push, reply, and return to `PR Review`.
