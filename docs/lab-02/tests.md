@@ -12,7 +12,7 @@ Tests must cover happy paths, invalid input, boundaries, ownership, failures, lo
 | --- | --- | --- | --- | --- | --- | --- |
 | UNIT-01 | Unit | BR-02, AC-06 | Ticket Number generation | Format is unique and backend-derived | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
 | UNIT-02 | Unit | BR-12-17, AC-05 | Ticket validation and trimming | Valid values pass, invalid values return field errors | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
-| UNIT-03 | Unit | BR-19-27, AC-07, AC-15 | Attachment validation and removal reason | Type, size, count, and reason rules are enforced | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts` | Pass |
+| UNIT-03 | Unit | BR-19-27, AC-07, AC-15 | Attachment validation and removal reason | Type, size, count, and reason rules are enforced | `server/tests/lab-02/attachments.api.test.ts` | Pass |
 | UNIT-04 | Unit | BR-30, AC-01, AC-04 | Repeatable Lab 2 seed | Required reference data and Requesters are upserted without duplicates | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
 | INFRA-01 | Script safety | BR-43 | Test-database preparation guard | Missing, malformed, and non-`toktickit_test` URLs exit non-zero before any destructive database command, the dedicated test URL may continue | `server/tests/lab-02/test-db-guard.test.ts` | Pass |
 | API-01 | API | AC-01 | Active Requester retrieval | Active Requesters returned, inactive excluded | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
@@ -21,9 +21,9 @@ Tests must cover happy paths, invalid input, boundaries, ownership, failures, lo
 | API-04 | API | AC-05, AC-08 | Invalid and failed creation | Field errors and safe failures, no duplicate submission behavior | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
 | API-05 | API | AC-09-10 | Owned list query | Search, filters, sorting, pagination, metadata, and ownership | `server/tests/lab-02/my-tickets.api.test.ts` | Pass |
 | API-06 | API | AC-11-12 | Owned detail and cross-requester access | Owner succeeds, different requester receives safe 404 | `server/tests/lab-02/ticket-detail.api.test.ts` | Pass |
-| API-07 | API | AC-13-16 | Attachment lifecycle | Upload, metadata, active download, soft removal, blocked removed download | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts` | Pass |
+| API-07 | API | AC-13-16 | Attachment lifecycle | Upload, metadata, active download, soft removal, blocked removed download | `server/tests/lab-02/attachments.api.test.ts` | Pass |
 | API-08 | API | AC-10, AC-19 | List boundaries and invalid queries | Blank search, overlong search, invalid filters, sorts, pages, out-of-range page | `server/tests/lab-02/my-tickets.api.test.ts` | Pass |
-| API-09 | API | AC-07, AC-13-16, AC-20 | Attachment boundaries and failures | Five-file limit, MIME/extension mismatch, 5 MB boundary, compensation, disposition, repeat removal | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts` | Pass |
+| API-09 | API | AC-07, AC-13-16, AC-20 | Attachment boundaries and failures | Five-file limit, MIME/extension mismatch, 5 MB boundary, compensation, disposition, repeat removal | `server/tests/lab-02/attachments.api.test.ts` | Pass |
 | UI-01 | UI | AC-01-03 | Requester selector and shell context | Loading, active list, empty/failure, selection, display, switching | `client/tests/lab-02/CreateTicket.test.tsx` | Pass |
 | UI-02 | UI | AC-04-08 | Create Ticket form | Reference data, field validation, busy, success, failure, invalid file | `client/tests/lab-02/CreateTicket.test.tsx` | Pass |
 | UI-03 | UI | AC-09-10 | My Tickets behavior | List, search, filters, sort, pagination, empty/no-results/failure | `client/tests/lab-02/MyTickets.test.tsx` | Pass |
@@ -130,7 +130,7 @@ Verification on 2026-08-28 from `docs/lab2-delivery`, based on the Bank848 merge
 | `npm run test:e2e` | Pass, desktop, tablet, and mobile projects, 3 tests |
 | `git diff --check` | Pass |
 | Dedicated seed query | Pass, 4 active Categories, 7 active Related Systems, 4 active Requesters, 1 inactive Requester, 3 Tickets |
-| Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and PDF output remain ignored |
+| Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and any local Answer Sheet output remain outside Git |
 
 This section records the docs-branch verification only. The final-main rerun and the staging-to-main release evidence are added after Bank848 merges the documentation PR and the required release PR.
 
