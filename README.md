@@ -78,7 +78,7 @@ The fixed seed contains four active Requesters, one inactive Requester, the four
 
 ## Lab 2 evidence
 
-Real Playwright screenshots are stored under `artifacts/lab-02/screenshots/create-ticket/`, `artifacts/lab-02/screenshots/my-tickets/`, and `artifacts/lab-02/screenshots/ticket-detail/` for desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`. The final submission is generated locally as `output/pdf/CPE334_Lab2_67070501002.pdf` after the staging-to-main release merge. The PDF output and temporary render files are ignored by Git.
+Real Playwright screenshots are stored under `artifacts/lab-02/screenshots/create-ticket/`, `artifacts/lab-02/screenshots/my-tickets/`, and `artifacts/lab-02/screenshots/ticket-detail/` for desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`. The individual Lab 2 Answer Sheet and final PDF are prepared and submitted on the course platform, not stored in this repository. Any local submission output and temporary render files remain ignored by Git.
 
 ## Lab 2 database preparation
 

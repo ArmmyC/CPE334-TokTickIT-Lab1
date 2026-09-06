@@ -130,7 +130,7 @@ Verification on 2026-08-28 from `docs/lab2-delivery`, based on the Bank848 merge
 | `npm run test:e2e` | Pass, desktop, tablet, and mobile projects, 3 tests |
 | `git diff --check` | Pass |
 | Dedicated seed query | Pass, 4 active Categories, 7 active Related Systems, 4 active Requesters, 1 inactive Requester, 3 Tickets |
-| Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and PDF output remain ignored |
+| Tracked secret and generated-file audit | Pass, `.env.test`, storage bytes, reports, test results, and any local Answer Sheet output remain outside Git |
 
 This section records the docs-branch verification only. The final-main rerun and the staging-to-main release evidence are added after Bank848 merges the documentation PR and the required release PR.
 
