@@ -66,7 +66,7 @@ The shell contains:
 - Only permitted links:
   - Requester: My Tickets and Create Ticket.
   - IT Staff: Ticket Queue.
-  - Administrator: User Management.
+  - Administrator: User Management. Administrators do not receive Ticket Queue navigation.
 - Logout action with busy state and safe failure handling.
 
 The shell must not show `Select a Development Requester`, `Change Requester`, the old requester testing notice, or any destination the current role cannot use.
@@ -161,6 +161,10 @@ Organize the screen into separate cards:
 Operational actions show current value, available values, validation, saving state, success feedback, conflict feedback, and safe API failure. Resolved, Closed, and Cancelled actions require a confirmation step. Invalid status transitions are never hidden as merely disabled controls. The API remains authoritative.
 
 Public Comments and Internal Notes never share a submit control or ambiguous label. The form says exactly where the text will be visible before submission.
+
+### Administrator protected Ticket view `/admin/tickets/:ticketId`
+
+Administrators may open a protected Ticket Detail by a direct authorized link, but the shell does not provide a Ticket Queue. This view shows the Ticket information, Requester, Attachments, Public Comments, Internal Notes, and Requester resolution indication as read-only content. It exposes only the IT Priority editor because the Lab 3 contract explicitly permits Administrators to change IT Priority. It never exposes ownership, formal status, Public Comment creation, or Internal Note creation controls. Route guards and the backend enforce the same permissions, and the view provides loading, forbidden, not-found, conflict, and safe API-failure feedback.
 
 ## 8. Administrator User Management `/admin/users`
 

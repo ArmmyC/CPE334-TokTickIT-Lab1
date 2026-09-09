@@ -68,7 +68,7 @@ Replace the temporary Development Requester selector with real login and role-ba
 - **FR-15:** IT Staff shall retrieve a Ticket Queue with search, suitable filters, sorting, pagination, ownership, status, priority, loading, empty, no-results, forbidden, and failure behavior.
 - **FR-16:** IT Staff shall open a Ticket Detail containing Ticket information, Requester data, Attachments, ownership, IT Priority, current status, Public Comments, Internal Notes, and Requester resolution indication.
 - **FR-17:** IT Staff shall claim, assign, or reassign a Ticket to an active IT Staff or Administrator, or clear the owner to unassigned.
-- **FR-18:** IT Staff shall update IT Priority and only permitted formal Ticket status transitions.
+- **FR-18:** IT Staff or Administrator shall update IT Priority. IT Staff shall perform only permitted formal Ticket status transitions.
 - **FR-19:** IT Staff shall create and retrieve Public Comments and Internal Notes. Both resources shall be append-only.
 
 ### Administrator behavior
@@ -93,11 +93,11 @@ Replace the temporary Development Requester selector with real login and role-ba
 - **BR-01:** Only an active User with valid credentials may authenticate.
 - **BR-02:** Invalid credentials and inactive accounts return the same safe authentication failure without revealing which condition occurred.
 - **BR-03:** Email comparison is case-insensitive for authentication and uniqueness, while the stored canonical email is normalized and trimmed.
-- **BR-04:** Passwords are never stored or returned in plaintext. Every password hash uses a random salt and a memory-hard password derivation function.
+- **BR-04:** Passwords are never stored or returned in plaintext. Every password hash uses Node's built-in `scrypt` password derivation function with `N = 32768`, `r = 8`, `p = 1`, a cryptographically random 16-byte salt, a 32-byte derived key, and a 64 MiB maximum-memory limit. The stored value is versioned with its parameters, and verification uses constant-time comparison.
 - **BR-05:** A password must be 12 to 128 characters, contain at least one uppercase letter, one lowercase letter, one digit, and one non-alphanumeric character, and must match its confirmation.
 - **BR-06:** A User with `mustChangePassword = true` cannot access normal application APIs or screens until the password change succeeds.
 - **BR-07:** A successful password change clears `mustChangePassword` and revokes other active sessions for that User.
-- **BR-08:** Sessions expire after eight hours of inactivity or absolute lifetime, whichever comes first. Logout revokes the current session immediately.
+- **BR-08:** Sessions expire after eight hours since the last valid authenticated request or 24 hours since session creation, whichever comes first. The inactivity deadline may slide when a valid protected request updates `lastUsedAt`, but the absolute deadline never changes. Logout revokes the current session immediately.
 - **BR-09:** State-changing browser requests require the session CSRF check. Authentication cookies are HttpOnly, SameSite=Lax, and Secure outside local HTTP development.
 - **BR-10:** Safe API errors never expose password hashes, session tokens, database details, stack traces, or local file paths.
 
@@ -107,7 +107,7 @@ Replace the temporary Development Requester selector with real login and role-ba
 - **BR-12:** The backend checks the authenticated session and required role on every protected endpoint.
 - **BR-13:** A Requester can access only their own Ticket and Attachment resources, can create Tickets, can post Public Comments, and can indicate that a problem appears resolved.
 - **BR-14:** IT Staff can view the Staff Queue and Staff Ticket Detail, manage ownership, IT Priority, permitted status, Public Comments, and Internal Notes.
-- **BR-15:** Administrators can manage User accounts and can read the protected Ticket information needed to view Public Comments and Internal Notes, but do not receive IT Staff mutation controls.
+- **BR-15:** Administrators can manage User accounts, read the protected Ticket information needed to view Public Comments and Internal Notes, and change IT Priority as the one explicitly permitted Ticket mutation. They do not receive ownership, status, Public Comment, Internal Note, or other IT Staff mutation controls.
 - **BR-16:** A forbidden request does not reveal protected content. A foreign or non-existent Requester Ticket and its Attachments use the same safe not-found response.
 
 ### Migration and ownership
@@ -121,7 +121,7 @@ Replace the temporary Development Requester selector with real login and role-ba
 
 - **BR-21:** A Ticket has one Requester User and may have zero or one primary Ticket Owner.
 - **BR-22:** A Ticket Owner must be an active IT Staff or Administrator User. A Ticket may be unassigned.
-- **BR-23:** Requested Priority remains the value submitted by the Requester. IT Priority initially copies Requested Priority during creation and may later be changed only by IT Staff.
+- **BR-23:** Requested Priority remains the value submitted by the Requester. IT Priority initially copies Requested Priority during creation and may later be changed only by IT Staff or Administrator.
 - **BR-24:** Formal Ticket statuses are `NEW`, `OPEN`, `IN_PROGRESS`, `WAITING_FOR_REQUESTER`, `RESOLVED`, `CLOSED`, `REOPENED`, and `CANCELLED`.
 - **BR-25:** Only transitions in the approved transition matrix are accepted. The backend rejects invalid transitions even when a client bypasses the UI.
 - **BR-26:** A Requester resolution indication records a timestamp and author but never changes formal status.
@@ -152,6 +152,7 @@ Replace the temporary Development Requester selector with real login and role-ba
 - **BR-42:** The seed contains at least four active Requesters, one inactive Requester, three active IT Staff, one inactive IT Staff, and one active Administrator.
 - **BR-43:** The Staff Queue supports documented searchable, filterable, sortable fields, allowed page sizes, deterministic ordering, and safe invalid-query responses.
 - **BR-44:** The test database guard must reject any `DATABASE_URL` whose database pathname is not exactly `/toktickit_test` before reset, migration, or seed.
+- **BR-45:** Login failures are throttled by a server-side limiter keyed by normalized email and source IP. After five failed attempts within 15 minutes, further attempts are throttled for 15 minutes. A successful login clears the limiter. Throttled requests return a generic `429` response, no account is permanently locked, and no response reveals whether an email exists.
 
 ## 6. UI Specification Summary
 
@@ -163,6 +164,7 @@ The complete screen and component contract is in `ui-spec.md`. The application r
 - Requester screens preserve Lab 2 Create Ticket, My Tickets, Ticket Detail, and Attachment states under authenticated identity. Ticket Detail adds Public Comments and Problem Appears Resolved.
 - Staff Queue provides the documented filters, search, sorting, pagination, ownership, status, and priority badges with desktop table and smaller-screen cards.
 - Staff Ticket Detail separates Ticket data, operational controls, Public Comments, Internal Notes, Attachments, and Requester resolution indication.
+- Administrator protected Ticket Detail provides read-only Ticket communication and Attachments plus the explicitly permitted IT Priority edit, without Staff Queue or other Staff mutation controls.
 - Administrator User Management stays intentionally simple, with one list and one create or edit mode, the required search and optional role filter, and safety feedback.
 - All screens provide meaningful loading, saving, success, validation, empty, no-results, forbidden, not-found, conflict, and safe-failure states where applicable.
 
@@ -173,7 +175,7 @@ The complete screen and component contract is in `ui-spec.md`. The application r
 The final schema contains `Category`, `RelatedSystem`, `User`, `Session`, `Ticket`, `Attachment`, `PublicComment`, and `InternalNote`.
 
 - `User`: `id`, `name`, normalized unique `email`, `passwordHash`, `role`, `isActive`, `mustChangePassword`, `createdAt`, and `updatedAt`.
-- `Session`: `id`, `tokenHash`, `csrfTokenHash`, `userId`, `expiresAt`, `createdAt`, `lastUsedAt`, and `revokedAt`, with a unique token hash and indexes for User, expiry, and revocation lookup.
+- `Session`: `id`, `tokenHash`, `csrfTokenHash`, `userId`, sliding `expiresAt`, fixed `absoluteExpiresAt`, `createdAt`, `lastUsedAt`, and `revokedAt`, with a unique token hash and indexes for User, expiry, absolute expiry, and revocation lookup.
 - `Ticket`: existing Lab 2 fields, `requesterId` referencing User, nullable `ownerId` referencing User, full `TicketStatus`, nullable `requesterResolvedAt`, nullable `requesterResolvedById` referencing User, and indexes for requester, owner, status, priorities, and updated order.
 - `Attachment`: existing Lab 2 fields and ownership checked through its Ticket.
 - `PublicComment`: `id`, `ticketId`, `authorId`, `content`, and `createdAt`, with indexes for Ticket and creation order.
@@ -186,14 +188,14 @@ User foreign keys use Restrict behavior where account history must remain. Ticke
 ### Migration strategy
 
 1. Create the new User role enum, User table, Session table, comment and note tables, and any new Ticket enum values or columns.
-2. Insert one User for every DevelopmentRequester with the original id, name, email, active state, role Requester, a deterministic local initial password hash, and `mustChangePassword = true`.
+2. Insert one User for every DevelopmentRequester with the original id, name, email, active state, role Requester, a deterministic local initial password hash, and `mustChangePassword = true`. For the local lab database, the initial password convention is `TokTickIT-Lab3!User-<legacyUserId>-Aa9`, where `<legacyUserId>` is the decimal migrated User id. The migration uses this value only to derive the hash. It is not stored or returned, and the local credential table in `README.md` documents how each migrated Requester receives it. Email delivery is excluded. In a non-local deployment, an Administrator must set a new initial password before the migrated account is used.
 3. Add the new Ticket requester foreign key and owner fields, validate that every existing Ticket maps to a User with the same id, then remove the old requester foreign key.
 4. Rename the new relationship to `requester`, remove the legacy DevelopmentRequester foreign key and table, and reset the User sequence above the maximum migrated id.
 5. Add indexes and constraints, then run a migration verification query that confirms Ticket counts and requester ownership before and after the migration.
 
 ### Seed decisions
 
-The idempotent seed preserves the four Lab 1 Categories and seven Lab 2 Related Systems. It upserts five Requesters, four IT Staff accounts with one inactive, one Administrator, realistic Tickets across all required statuses and priorities, assigned and unassigned owners, Public Comments, and Internal Notes. Seed credentials are deterministic local-development values documented in `README.md` and are never used as real credentials.
+The idempotent seed preserves the four Lab 1 Categories and seven Lab 2 Related Systems. It upserts five Requesters with four active and one inactive, four IT Staff accounts with three active and one inactive, one active Administrator, realistic Tickets across all required statuses and priorities, assigned and unassigned owners, Public Comments, and Internal Notes. Seed credentials are deterministic local-development values documented in `README.md` and are never used as real credentials.
 
 ## 8. API Contract
 
@@ -203,15 +205,15 @@ The complete endpoint contract, request and response shapes, authentication beha
 - Authentication: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/auth/change-password`.
 - Authenticated reference data: `GET /api/categories`, `GET /api/related-systems`.
 - Requester Ticket APIs: `POST /api/tickets`, `GET /api/tickets`, `GET /api/tickets/:ticketId`, existing Attachment endpoints without requesterId, `GET/POST /api/tickets/:ticketId/comments`, and `POST /api/tickets/:ticketId/requester-resolution`.
-- IT Staff APIs: `GET /api/staff/tickets`, `GET /api/staff/tickets/:ticketId`, `PATCH /api/staff/tickets/:ticketId/owner`, `PATCH /api/staff/tickets/:ticketId/priority`, `PATCH /api/staff/tickets/:ticketId/status`, `GET/POST /api/staff/tickets/:ticketId/comments`, and `GET/POST /api/staff/tickets/:ticketId/notes`.
+- IT Staff and permitted Administrator Ticket APIs: `GET /api/staff/tickets`, `GET /api/staff/tickets/:ticketId`, `PATCH /api/staff/tickets/:ticketId/owner`, `PATCH /api/staff/tickets/:ticketId/priority`, `PATCH /api/staff/tickets/:ticketId/status`, `GET/POST /api/staff/tickets/:ticketId/comments`, and `GET/POST /api/staff/tickets/:ticketId/notes`. Administrator permission is limited to Ticket visibility and the IT Priority update described in `api-spec.md`.
 - Administrator APIs: `GET /api/admin/users`, `POST /api/admin/users`, `PATCH /api/admin/users/:userId`, and `POST /api/admin/users/:userId/initial-password`.
 
-Unauthenticated responses use 401, authenticated but forbidden responses use 403, invalid input uses 400, missing or protected resources use safe 404 behavior, duplicate or state conflicts use 409, oversized attachments use 413, unsupported attachment types use 415, and unexpected failures use 500.
+Unauthenticated responses use 401, authenticated but forbidden responses use 403, invalid input uses 400, missing or protected resources use safe 404 behavior, duplicate or state conflicts use 409, oversized attachments use 413, unsupported attachment types use 415, temporary login throttling uses 429, and unexpected failures use 500.
 
 ## 9. Acceptance Criteria
 
 - **AC-01:** Given a valid active User, when the User logs in, then the backend establishes an expiring session and returns the permitted identity and role without password data.
-- **AC-02:** Given invalid credentials or an inactive account, when login is attempted, then the response is a safe generic authentication failure.
+- **AC-02:** Given invalid credentials or an inactive account, when login is attempted, then the response is a safe generic authentication failure. Given five failed attempts for the same normalized email and source IP within 15 minutes, subsequent attempts are temporarily throttled with the documented generic `429` response, and a later successful login clears the limiter.
 - **AC-03:** Given a User with `mustChangePassword`, when login succeeds, then normal application APIs and screens remain unavailable until a valid password change succeeds.
 - **AC-04:** Given an authenticated User, when Logout is used, then the session is revoked and direct protected access is rejected.
 - **AC-05:** Given the migrated Lab 2 database, when migration completes, then existing Ticket counts, Attachment counts, and Requester ownership remain unchanged under User relationships.
@@ -221,9 +223,9 @@ Unauthenticated responses use 401, authenticated but forbidden responses use 403
 - **AC-09:** Given a Requester-owned Ticket, when a Public Comment or Problem Appears Resolved action is submitted, then it is saved under the authenticated author and formal status remains unchanged.
 - **AC-10:** Given an IT Staff User, when the Staff Queue is queried with valid search, filters, sorting, and pagination, then results and metadata match the documented contract.
 - **AC-11:** Given invalid Staff Queue query values, when the endpoint is called, then it returns safe field errors without silently changing the query.
-- **AC-12:** Given a non-Staff User, when the Staff Queue or Staff mutation endpoint is called, then access is denied without protected data leakage.
+- **AC-12:** Given a User without the specific permission, when the Staff Queue or an ownership, status, Public Comment, or Internal Note mutation endpoint is called, then access is denied without protected data leakage. Administrator access to Ticket visibility and IT Priority follows the explicit authorization matrix.
 - **AC-13:** Given an IT Staff User and an eligible Ticket, when ownership is claimed or reassigned, then the active eligible owner is stored or the Ticket becomes unassigned.
-- **AC-14:** Given an IT Staff User, when IT Priority is changed, then the requested priority remains unchanged and the new IT Priority is returned.
+- **AC-14:** Given an IT Staff or Administrator User, when IT Priority is changed, then the requested priority remains unchanged and the new IT Priority is returned.
 - **AC-15:** Given an IT Staff User, when an allowed status transition is submitted, then the new status is saved. When a disallowed transition is submitted, then the Ticket remains unchanged and a safe conflict is returned.
 - **AC-16:** Given a Ticket with public and internal communication, when each permitted role retrieves it, then Public Comments and Internal Notes follow the authorization matrix and content is safe text.
 - **AC-17:** Given blank, oversized, or invalid comment or note content, when it is submitted, then validation fails without creating a row.
@@ -261,9 +263,11 @@ Every criterion is mapped in `tests.md` to one or more planned automated tests a
 - The existing `TokTickIT Individual Sprints` Project and statuses `Backlog`, `Specified`, `Started`, `PR Review`, `Fixing`, and `Done` are reused.
 - `lab3-staging` is the Lab 3 integration branch, created from the reviewed Lab 2 `main` baseline.
 - Bank848 is the Lab 3 peer reviewer and performs each feature and release merge, following the confirmed Lab 2-style workflow.
-- An opaque database-backed session is appropriate for this same-origin educational application because logout and revocation are explicit and no token is exposed to client JavaScript.
+- `scrypt` is selected over a custom or plaintext-compatible hash because it is memory-hard and available through the Node runtime used by the course stack. The contract fixes `N = 32768`, `r = 8`, `p = 1`, a 16-byte random salt, a 32-byte derived key, and a 64 MiB maximum-memory limit so implementations and tests use the same security decision.
+- An opaque database-backed session is appropriate for this same-origin educational application because logout and revocation are explicit and no token is exposed to client JavaScript. Each session stores a sliding eight-hour inactivity deadline and a fixed 24-hour absolute deadline.
 - Same-origin and double-submit CSRF checks are used because authentication is cookie-based and all state-changing requests originate from the application client.
-- Administrators have read-only access to protected Ticket communication needed to satisfy the visibility rules but do not receive IT Staff operational mutation controls.
-- Owner assignment accepts active IT Staff and Administrator Users because the Lab 3 sheet permits either role as a primary Ticket Owner. The Administrator UI does not expose Staff mutation actions.
+- Failed login attempts use a server-side email-and-source-IP limiter with the BR-45 threshold and temporary throttle. It does not permanently lock accounts, which keeps the decision within the Lab 3 exclusions.
+- Administrators have read-only access to protected Ticket communication needed to satisfy the visibility rules and may change IT Priority because the Lab 3 sheet explicitly permits that mutation. They do not receive ownership, status, Public Comment, Internal Note, or other IT Staff mutation controls.
+- Owner assignment accepts active IT Staff and Administrator Users because the Lab 3 sheet permits either role as a primary Ticket Owner. The Administrator UI does not expose Staff Queue, ownership, status, Public Comment, or Internal Note actions. Its protected Ticket view exposes only the explicitly permitted IT Priority edit.
 - Local seeded credentials are examples for development and test evidence only. They are not production secrets.
 - The Answer Sheet and final PDF are individual external submission artifacts and remain outside Git.
