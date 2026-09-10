@@ -68,6 +68,7 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 | E2E-01 | E2E | AC-01, AC-02, AC-03, AC-04, AC-22, AC-23 | Authentication flow | Valid and invalid login, inactive account, first password change, role display, logout, direct block, and responsive states pass | `e2e/lab-03/authentication.spec.ts` | Planned |
 | E2E-02 | E2E | AC-10, AC-13, AC-14, AC-15, AC-16, AC-22, AC-23 | IT Staff flow | Seeded queue, search, filter, sort, pagination, detail, ownership, priority, status, comments, notes, Attachments, authorization, and responsive states pass | `e2e/lab-03/staff-ticket-flow.spec.ts` | Planned |
 | E2E-03 | E2E | AC-14, AC-18, AC-19, AC-20, AC-21, AC-22, AC-23 | Administrator flow | User list, search, filter, create, edit, password change, safety guards, protected Ticket visibility with IT Priority edit, forbidden Staff mutations, and responsive states pass | `e2e/lab-03/user-administration.spec.ts` | Planned |
+| E2E-04 | E2E | AC-08, AC-09, AC-22, AC-23 | Requester flow | Authenticated Requester opens an owned Ticket, preserves Lab 2 Ticket and Attachment behavior, adds a Public Comment, indicates Problem Appears Resolved, confirms formal status remains unchanged, and completes the responsive checks | `e2e/lab-03/requester-ticket-flow.spec.ts` | Planned |
 
 ## 3. Acceptance-Criterion Traceability
 
@@ -80,8 +81,8 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 | AC-05 | MIG-01, REG-01 |
 | AC-06 | SEED-01, API-01, E2E-01 |
 | AC-07 | API-07, SEC-02, UI-03 |
-| AC-08 | API-08, API-09, API-10, UI-04, REG-02 |
-| AC-09 | API-11, UI-05, E2E-02 |
+| AC-08 | API-08, API-09, API-10, UI-04, REG-02, E2E-04 |
+| AC-09 | API-11, UI-05, E2E-04 |
 | AC-10 | API-12, UI-06, RESP-02, E2E-02 |
 | AC-11 | API-13, UI-06 |
 | AC-12 | API-06, SEC-02, UI-06, E2E-02, E2E-03 |
@@ -94,8 +95,8 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 | AC-19 | API-20, API-22, UI-08, E2E-03 |
 | AC-20 | UNIT-05, API-22, UI-08, E2E-03 |
 | AC-21 | API-21, UI-08, E2E-03 |
-| AC-22 | STYLE-01, RESP-01, RESP-02, RESP-03, E2E-01, E2E-02, E2E-03 |
-| AC-23 | E2E-01, E2E-02, E2E-03 |
+| AC-22 | STYLE-01, RESP-01, RESP-02, RESP-03, E2E-01, E2E-02, E2E-03, E2E-04 |
+| AC-23 | E2E-01, E2E-02, E2E-03, E2E-04 |
 
 ## 4. Responsive and Visual Checklist
 
