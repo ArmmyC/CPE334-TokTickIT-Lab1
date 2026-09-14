@@ -8,6 +8,7 @@ import {
   readCookie,
   SESSION_INACTIVITY_MS,
   setAuthCookies,
+  touchSession,
   verifyCsrfToken,
   hasAuthDatabase,
 } from './session.js';
@@ -205,15 +206,23 @@ export function createAuthRouter(database: AuthDatabaseLike) {
     }
   });
 
-  router.get('/me', (request, response) => {
+  router.get('/me', async (request, response, next) => {
     if (!request.auth) {
       sendAuthenticationRequired(response);
       return;
     }
-    response.status(200).json({
-      user: serializeSafeUser(request.auth.user),
-      passwordChangeRequired: request.auth.user.mustChangePassword,
-    });
+
+    try {
+      if (hasAuthDatabase(database)) {
+        await touchSession(database, request.auth);
+      }
+      response.status(200).json({
+        user: serializeSafeUser(request.auth.user),
+        passwordChangeRequired: request.auth.user.mustChangePassword,
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post('/logout', async (request, response, next) => {

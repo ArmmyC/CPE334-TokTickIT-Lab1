@@ -270,6 +270,29 @@ describe('Lab 3 authentication API', () => {
     expect(login.status).toBe(200);
   });
 
+  it('refreshes session inactivity when current user is read', async () => {
+    const { app, sessions, users } = await createAuthHarness();
+    users.get(1)!.mustChangePassword = false;
+    const agent = request.agent(app);
+    await agent
+      .post('/api/auth/login')
+      .send({ email: 'ariya@example.test', password: 'Initial-password1!' });
+
+    const session = [...sessions.values()][0];
+    const absoluteDeadline = session.absoluteExpiresAt;
+    const previousLastUsedAt = new Date(Date.now() - 60_000);
+    const previousExpiresAt = new Date(Date.now() + 60_000);
+    session.lastUsedAt = previousLastUsedAt;
+    session.expiresAt = previousExpiresAt;
+
+    const currentUser = await agent.get('/api/auth/me');
+
+    expect(currentUser.status).toBe(200);
+    expect(session.lastUsedAt.getTime()).toBeGreaterThan(previousLastUsedAt.getTime());
+    expect(session.expiresAt.getTime()).toBeGreaterThan(previousExpiresAt.getTime());
+    expect(session.absoluteExpiresAt).toEqual(absoluteDeadline);
+  });
+
   it('slides inactivity only up to the fixed absolute session deadline', async () => {
     const { app, sessions, users } = await createAuthHarness();
     users.get(1)!.mustChangePassword = false;
