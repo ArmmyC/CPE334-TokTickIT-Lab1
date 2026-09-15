@@ -1,7 +1,8 @@
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
-import { createApp, type ApplicationApiDatabase, type AttachmentRecord } from '../../src/app.js';
+import { createApp, type AttachmentRecord } from '../../src/app.js';
 import type { AttachmentStorage } from '../../src/lib/attachment-storage.js';
+import { createAuthTestHarness, withAuthDatabase } from '../lab-03/auth-test-harness.js';
 
 const ticketDate = new Date('2026-08-21T10:00:00.000Z');
 const removedAt = new Date('2026-08-21T11:00:00.000Z');
@@ -49,7 +50,7 @@ const ticketDetail = {
   relatedSystem: { id: 7, name: 'Corporate Laptop' },
 };
 
-function createUploadHarness() {
+async function createUploadHarness() {
   const attachment = {
     id: 7,
     ticketId: 42,
@@ -66,7 +67,8 @@ function createUploadHarness() {
     remove: vi.fn().mockResolvedValue(undefined),
     read: vi.fn().mockResolvedValue(Buffer.from('pdf')),
   };
-  const database = {
+  const auth = await createAuthTestHarness();
+  const database = withAuthDatabase({
     category: { findMany: vi.fn() },
     ticket: {
       findUnique: vi.fn().mockResolvedValue({ id: 42, requesterId: 1 }),
@@ -75,12 +77,13 @@ function createUploadHarness() {
       count: vi.fn().mockResolvedValue(0),
       create: vi.fn().mockResolvedValue(attachment),
     },
-  } as unknown as ApplicationApiDatabase;
+  }, auth.database);
+  const app = createApp(database, { attachmentStorage: storage });
 
-  return { database, storage };
+  return { database, storage, app, login: (email?: string) => auth.login(app, email) };
 }
 
-function createAttachmentHarness() {
+async function createAttachmentHarness() {
   const attachments = new Map<number, AttachmentRecord>([
     [activeAttachment.id, activeAttachment],
     [removedAttachment.id, removedAttachment],
@@ -106,20 +109,23 @@ function createAttachmentHarness() {
     remove: vi.fn().mockResolvedValue(undefined),
     read: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.7 test bytes')),
   };
-  const database = {
+  const auth = await createAuthTestHarness();
+  const database = withAuthDatabase({
     category: { findMany: vi.fn() },
     relatedSystem: { findMany: vi.fn() },
-    developmentRequester: { findMany: vi.fn() },
     ticket: { findUnique: ticketFindUnique },
     attachment: {
       findUnique: attachmentFindUnique,
       findMany: attachmentFindMany,
       update: attachmentUpdate,
     },
-  } as unknown as ApplicationApiDatabase;
+  }, auth.database);
+  const app = createApp(database, { attachmentStorage: storage });
 
   return {
     database,
+    app,
+    login: (email?: string) => auth.login(app, email),
     storage,
     attachmentFindUnique,
     attachmentUpdate,
@@ -128,11 +134,12 @@ function createAttachmentHarness() {
 
 describe('Lab 2 attachment upload API', () => {
   it('stores a permitted attachment and returns metadata without the storage key', async () => {
-    const { database, storage } = createUploadHarness();
+    const { app, storage, login } = await createUploadHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database, { attachmentStorage: storage }))
+    const response = await requester.agent
       .post('/api/tickets/42/attachments')
-      .field('requesterId', '1')
+      .set('X-CSRF-Token', requester.csrfToken)
       .attach('file', Buffer.from('%PDF'), {
         filename: 'evidence.pdf',
         contentType: 'application/pdf',
@@ -152,13 +159,14 @@ describe('Lab 2 attachment upload API', () => {
   });
 
   it('removes stored bytes when attachment metadata creation fails', async () => {
-    const { database, storage } = createUploadHarness();
+    const { database, app, storage, login } = await createUploadHarness();
+    const requester = await login();
     (database.attachment as unknown as { create: ReturnType<typeof vi.fn> }).create
       .mockRejectedValue(new Error('metadata failed'));
 
-    const response = await request(createApp(database, { attachmentStorage: storage }))
+    const response = await requester.agent
       .post('/api/tickets/42/attachments')
-      .field('requesterId', '1')
+      .set('X-CSRF-Token', requester.csrfToken)
       .attach('file', Buffer.from('%PDF'), {
         filename: 'evidence.pdf',
         contentType: 'application/pdf',
@@ -171,11 +179,12 @@ describe('Lab 2 attachment upload API', () => {
   });
 
   it('rejects unsupported extensions or MIME types', async () => {
-    const { database, storage } = createUploadHarness();
+    const { app, storage, login } = await createUploadHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database, { attachmentStorage: storage }))
+    const response = await requester.agent
       .post('/api/tickets/42/attachments')
-      .field('requesterId', '1')
+      .set('X-CSRF-Token', requester.csrfToken)
       .attach('file', Buffer.from('not an image'), {
         filename: 'evidence.exe',
         contentType: 'application/octet-stream',
@@ -187,13 +196,14 @@ describe('Lab 2 attachment upload API', () => {
   });
 
   it('rejects a sixth active attachment', async () => {
-    const { database, storage } = createUploadHarness();
+    const { database, app, storage, login } = await createUploadHarness();
+    const requester = await login();
     (database.attachment as unknown as { count: ReturnType<typeof vi.fn> }).count
       .mockResolvedValue(5);
 
-    const response = await request(createApp(database, { attachmentStorage: storage }))
+    const response = await requester.agent
       .post('/api/tickets/42/attachments')
-      .field('requesterId', '1')
+      .set('X-CSRF-Token', requester.csrfToken)
       .attach('file', Buffer.from('%PDF'), {
         filename: 'evidence.pdf',
         contentType: 'application/pdf',
@@ -207,13 +217,14 @@ describe('Lab 2 attachment upload API', () => {
   });
 
   it('uses the same safe not-found response for a foreign Ticket', async () => {
-    const { database, storage } = createUploadHarness();
+    const { database, app, storage, login } = await createUploadHarness();
+    const requester = await login();
     (database.ticket as unknown as { findUnique: ReturnType<typeof vi.fn> }).findUnique
       .mockResolvedValue(null);
 
-    const response = await request(createApp(database, { attachmentStorage: storage }))
+    const response = await requester.agent
       .post('/api/tickets/42/attachments')
-      .field('requesterId', '1')
+      .set('X-CSRF-Token', requester.csrfToken)
       .attach('file', Buffer.from('%PDF'), {
         filename: 'evidence.pdf',
         contentType: 'application/pdf',
@@ -225,12 +236,13 @@ describe('Lab 2 attachment upload API', () => {
   });
 
   it('rejects an attachment over the 5 MB limit with 413', async () => {
-    const { database, storage } = createUploadHarness();
+    const { database, app, storage, login } = await createUploadHarness();
+    const requester = await login();
     const oversizedFile = Buffer.alloc(5 * 1024 * 1024 + 1, 0x61);
 
-    const response = await request(createApp(database, { attachmentStorage: storage }))
+    const response = await requester.agent
       .post('/api/tickets/42/attachments')
-      .field('requesterId', '1')
+      .set('X-CSRF-Token', requester.csrfToken)
       .attach('file', oversizedFile, {
         filename: 'large.pdf',
         contentType: 'application/pdf',
@@ -244,9 +256,10 @@ describe('Lab 2 attachment upload API', () => {
 
 describe('Lab 2 attachment metadata and content API', () => {
   it('returns owned active metadata without exposing the storage key', async () => {
-    const { database } = createAttachmentHarness();
+    const { app, login } = await createAttachmentHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database)).get('/api/attachments/7?requesterId=1');
+    const response = await requester.agent.get('/api/attachments/7?requesterId=2');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -266,9 +279,10 @@ describe('Lab 2 attachment metadata and content API', () => {
   });
 
   it('keeps removed metadata readable but marks content unavailable', async () => {
-    const { database } = createAttachmentHarness();
+    const { login } = await createAttachmentHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database)).get('/api/attachments/8?requesterId=1');
+    const response = await requester.agent.get('/api/attachments/8');
 
     expect(response.status).toBe(200);
     expect(response.body.attachment).toMatchObject({
@@ -281,10 +295,10 @@ describe('Lab 2 attachment metadata and content API', () => {
   });
 
   it('returns active bytes with inline disposition and safe download headers', async () => {
-    const { database, storage } = createAttachmentHarness();
+    const { storage, login } = await createAttachmentHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database, { attachmentStorage: storage }))
-      .get('/api/attachments/7/download?requesterId=1&disposition=inline');
+    const response = await requester.agent.get('/api/attachments/7/download?requesterId=2&disposition=inline');
 
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('application/pdf');
@@ -296,39 +310,42 @@ describe('Lab 2 attachment metadata and content API', () => {
   });
 
   it('uses the same safe 404 for removed, foreign, and missing content', async () => {
-    const { database, storage, attachmentFindUnique } = createAttachmentHarness();
-    const app = createApp(database, { attachmentStorage: storage });
+    const { app, storage, login, attachmentFindUnique } = await createAttachmentHarness();
+    const requester = await login();
 
-    const removedResponse = await request(app).get('/api/attachments/8/download?requesterId=1');
+    const removedResponse = await requester.agent.get('/api/attachments/8/download');
     expect(removedResponse.status).toBe(404);
     expect(removedResponse.body).toEqual({ error: 'Attachment not found.' });
     expect(storage.read).not.toHaveBeenCalled();
 
-    const foreignResponse = await request(app).get('/api/attachments/7/download?requesterId=2');
+    const foreignRequester = await login('mali@example.test');
+    const foreignResponse = await foreignRequester.agent.get('/api/attachments/7/download?requesterId=2');
     expect(foreignResponse.status).toBe(404);
     expect(foreignResponse.body).toEqual({ error: 'Attachment not found.' });
 
-    const missingResponse = await request(app).get('/api/attachments/999/download?requesterId=1');
+    const missingResponse = await requester.agent.get('/api/attachments/999/download');
     expect(missingResponse.status).toBe(404);
     expect(missingResponse.body).toEqual({ error: 'Attachment not found.' });
   });
 
   it('rejects unsupported content disposition with a safe 400', async () => {
-    const { database } = createAttachmentHarness();
+    const { login } = await createAttachmentHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database))
-      .get('/api/attachments/7/download?requesterId=1&disposition=preview');
+    const response = await requester.agent.get('/api/attachments/7/download?disposition=preview');
 
     expect(response.status).toBe(400);
     expect(response.body.error).toEqual(expect.any(String));
   });
 
   it('soft-removes an owned Attachment, keeps its metadata, and records a trimmed reason', async () => {
-    const { database, attachmentUpdate } = createAttachmentHarness();
+    const { app, login, attachmentUpdate } = await createAttachmentHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database))
+    const response = await requester.agent
       .delete('/api/attachments/7')
-      .send({ requesterId: 1, removalReason: '  Uploaded the wrong document  ' });
+      .set('X-CSRF-Token', requester.csrfToken)
+      .send({ requesterId: 2, removalReason: '  Uploaded the wrong document  ' });
 
     expect(response.status).toBe(200);
     expect(response.body.attachment).toMatchObject({
@@ -348,11 +365,13 @@ describe('Lab 2 attachment metadata and content API', () => {
     ['too short', 'nope'],
     ['too long', 'x'.repeat(501)],
   ])('rejects a %s removal reason without updating metadata', async (_label, removalReason) => {
-    const { database, attachmentUpdate } = createAttachmentHarness();
+    const { login, attachmentUpdate } = await createAttachmentHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database))
+    const response = await requester.agent
       .delete('/api/attachments/7')
-      .send({ requesterId: 1, removalReason });
+      .set('X-CSRF-Token', requester.csrfToken)
+      .send({ requesterId: 2, removalReason });
 
     expect(response.status).toBe(400);
     expect(response.body.error).toEqual(expect.any(String));
@@ -360,19 +379,23 @@ describe('Lab 2 attachment metadata and content API', () => {
   });
 
   it('rejects a repeated removal with 409 and foreign removal with safe 404', async () => {
-    const { database, attachmentFindUnique } = createAttachmentHarness();
+    const { login, attachmentFindUnique } = await createAttachmentHarness();
+    const requester = await login();
     attachmentFindUnique.mockResolvedValueOnce(removedAttachment);
 
-    const repeatedResponse = await request(createApp(database))
+    const repeatedResponse = await requester.agent
       .delete('/api/attachments/8')
-      .send({ requesterId: 1, removalReason: 'Another valid reason' });
+      .set('X-CSRF-Token', requester.csrfToken)
+      .send({ requesterId: 2, removalReason: 'Another valid reason' });
     expect(repeatedResponse.status).toBe(409);
     expect(repeatedResponse.body.error).toEqual(expect.any(String));
 
     attachmentFindUnique.mockResolvedValueOnce(activeAttachment);
-    const foreignResponse = await request(createApp(database))
+    const foreignRequester = await login('mali@example.test');
+    const foreignResponse = await foreignRequester.agent
       .delete('/api/attachments/7')
-      .send({ requesterId: 2, removalReason: 'Another valid reason' });
+      .set('X-CSRF-Token', foreignRequester.csrfToken)
+      .send({ requesterId: 1, removalReason: 'Another valid reason' });
     expect(foreignResponse.status).toBe(404);
     expect(foreignResponse.body).toEqual({ error: 'Attachment not found.' });
   });

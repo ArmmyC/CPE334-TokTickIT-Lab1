@@ -1,6 +1,7 @@
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useRequesterContext } from './requester-context';
+import { useAuth } from './auth-context';
+import { apiFetch, readJson } from './api';
 
 type TicketReference = {
   id: number;
@@ -138,16 +139,8 @@ function isPreviewable(attachment: Attachment): boolean {
   return attachment.mimeType === 'application/pdf' || attachment.mimeType.startsWith('image/');
 }
 
-function attachmentUrl(attachmentId: number, requesterId: number, disposition: 'inline' | 'attachment'): string {
-  return `/api/attachments/${attachmentId}/download?requesterId=${requesterId}&disposition=${disposition}`;
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
+function attachmentUrl(attachmentId: number, disposition: 'inline' | 'attachment'): string {
+  return `/api/attachments/${attachmentId}/download?disposition=${disposition}`;
 }
 
 function attachmentErrorMessage(body: unknown, fallback: string): string {
@@ -156,14 +149,12 @@ function attachmentErrorMessage(body: unknown, fallback: string): string {
 
 type AttachmentSectionProps = {
   ticketId: number;
-  requesterId: number;
   attachments: Attachment[];
   onAttachmentsChange: (attachments: Attachment[]) => void;
 };
 
 function AttachmentSection({
   ticketId,
-  requesterId,
   attachments,
   onAttachmentsChange,
 }: AttachmentSectionProps) {
@@ -211,9 +202,8 @@ function AttachmentSection({
     setUploadError(null);
     try {
       const formData = new FormData();
-      formData.append('requesterId', String(requesterId));
       formData.append('file', selectedFile, selectedFile.name);
-      const response = await fetch(`/api/tickets/${ticketId}/attachments`, {
+      const response = await apiFetch(`/api/tickets/${ticketId}/attachments`, {
         method: 'POST',
         body: formData,
       });
@@ -308,10 +298,10 @@ function AttachmentSection({
     setRemovingBusy(true);
     setRemovalError(null);
     try {
-      const response = await fetch(`/api/attachments/${removing.id}`, {
+      const response = await apiFetch(`/api/attachments/${removing.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requesterId, removalReason: trimmedReason }),
+        body: JSON.stringify({ removalReason: trimmedReason }),
       });
       const body = await readJson(response);
       const removedAttachment = isRecord(body) && isAttachment(body.attachment) ? body.attachment : null;
@@ -363,11 +353,11 @@ function AttachmentSection({
                 ) : (
                   <div className="attachment-actions">
                     {isPreviewable(attachment) && (
-                      <a className="btn btn-secondary btn-sm" href={attachmentUrl(attachment.id, requesterId, 'inline')} target="_blank" rel="noreferrer">
+                      <a className="btn btn-secondary btn-sm" href={attachmentUrl(attachment.id, 'inline')} target="_blank" rel="noreferrer">
                         Preview {attachment.originalName}
                       </a>
                     )}
-                    <a className="btn btn-secondary btn-sm" href={attachmentUrl(attachment.id, requesterId, 'attachment')}>
+                    <a className="btn btn-secondary btn-sm" href={attachmentUrl(attachment.id, 'attachment')}>
                       Download {attachment.originalName}
                     </a>
                     <button type="button" className="btn btn-outline-danger btn-sm" aria-label={`Remove Attachment ${attachment.originalName}`} onClick={(event) => openRemoval(attachment, event.currentTarget)}>
@@ -446,14 +436,14 @@ function AttachmentSection({
 
 export function TicketDetailPage() {
   const { ticketId: ticketIdParam } = useParams<{ ticketId: string }>();
-  const { selectedRequester } = useRequesterContext();
+  const { user } = useAuth();
   const [detail, setDetail] = useState<TicketDetailResponse | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    if (!selectedRequester) return undefined;
+    if (!user) return undefined;
     const ticketId = Number(ticketIdParam);
     if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
       setLoadState('error');
@@ -463,7 +453,7 @@ export function TicketDetailPage() {
     let cancelled = false;
     setLoadState('loading');
     setErrorMessage(null);
-    void fetch(`/api/tickets/${ticketId}?requesterId=${selectedRequester.id}`)
+    void apiFetch(`/api/tickets/${ticketId}`)
       .then(async (response) => {
         const body = await readJson(response);
         if (!response.ok || !isTicketDetailResponse(body)) {
@@ -484,7 +474,7 @@ export function TicketDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [retryKey, selectedRequester, ticketIdParam]);
+  }, [retryKey, ticketIdParam, user]);
 
   return (
     <section className="ticket-detail-page" aria-labelledby="ticket-detail-title">
@@ -504,7 +494,7 @@ export function TicketDetailPage() {
           <button type="button" className="btn btn-secondary" onClick={() => setRetryKey((key) => key + 1)}>Retry</button>
         </div>
       )}
-      {loadState === 'ready' && detail && selectedRequester && (
+      {loadState === 'ready' && detail && user && (
         <>
           <div className="ticket-detail-header-card">
             <div>
@@ -532,7 +522,6 @@ export function TicketDetailPage() {
 
           <AttachmentSection
             ticketId={detail.ticket.id}
-            requesterId={selectedRequester.id}
             attachments={detail.attachments}
             onAttachmentsChange={(attachments) => setDetail((current) => current ? { ...current, attachments } : current)}
           />

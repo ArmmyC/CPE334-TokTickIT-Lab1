@@ -9,6 +9,7 @@ import {
   seedLab2ReferenceData,
 } from '../../src/lib/lab-02-seed.js';
 import { createApp, type ApplicationApiDatabase } from '../../src/app.js';
+import { createAuthTestHarness, withAuthDatabase } from '../lab-03/auth-test-harness.js';
 
 type SeedRow = {
   name: string;
@@ -150,55 +151,6 @@ describe('Lab 2 reference data seed', () => {
   });
 });
 
-describe('Lab 2 Development Requesters API', () => {
-  it('returns active requesters ordered by name and excludes inactive rows', async () => {
-    const findMany = vi.fn().mockResolvedValue([
-      { id: 2, name: 'Ariya Anderson', email: 'ariya@example.test' },
-      { id: 4, name: 'Narin Chai', email: 'narin@example.test' },
-    ]);
-    const database = {
-      developmentRequester: { findMany },
-    } as unknown as ApplicationApiDatabase;
-
-    const response = await request(createApp(database)).get('/api/development-requesters');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual([
-      { id: 2, name: 'Ariya Anderson', email: 'ariya@example.test' },
-      { id: 4, name: 'Narin Chai', email: 'narin@example.test' },
-    ]);
-    expect(findMany).toHaveBeenCalledWith({
-      where: { isActive: true },
-      select: { id: true, name: true, email: true },
-      orderBy: { name: 'asc' },
-    });
-  });
-
-  it('returns an empty list when no active requesters exist', async () => {
-    const findMany = vi.fn().mockResolvedValue([]);
-    const database = {
-      developmentRequester: { findMany },
-    } as unknown as ApplicationApiDatabase;
-
-    const response = await request(createApp(database)).get('/api/development-requesters');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual([]);
-  });
-
-  it('returns a safe error when requester retrieval fails', async () => {
-    const findMany = vi.fn().mockRejectedValue(new Error('database unavailable'));
-    const database = {
-      developmentRequester: { findMany },
-    } as unknown as ApplicationApiDatabase;
-
-    const response = await request(createApp(database)).get('/api/development-requesters');
-
-    expect(response.status).toBe(500);
-    expect(response.body).toEqual({ error: 'Unable to load Development Requesters.' });
-  });
-});
-
 type TicketFixture = {
   id: number;
   ticketNumber: string;
@@ -215,7 +167,7 @@ type TicketFixture = {
   updatedAt: Date;
 };
 
-function createTicketApiHarness() {
+async function createTicketApiHarness() {
   const createdAt = new Date('2026-08-21T09:00:00.000Z');
   const ticket: TicketFixture = {
     id: 42,
@@ -233,9 +185,6 @@ function createTicketApiHarness() {
     updatedAt: createdAt,
   };
   const transaction = {
-    developmentRequester: {
-      findUnique: vi.fn().mockResolvedValue({ id: 1, isActive: true }),
-    },
     category: {
       findUnique: vi.fn().mockResolvedValue({ id: 2, isActive: true }),
     },
@@ -248,7 +197,8 @@ function createTicketApiHarness() {
         Promise.resolve({ ...ticket, ...data })),
     },
   };
-  const database = {
+  const auth = await createAuthTestHarness();
+  const database = withAuthDatabase({
     category: {
       findMany: vi.fn(),
       findUnique: transaction.category.findUnique,
@@ -257,16 +207,13 @@ function createTicketApiHarness() {
       findMany: vi.fn(),
       findUnique: transaction.relatedSystem.findUnique,
     },
-    developmentRequester: {
-      findMany: vi.fn(),
-      findUnique: transaction.developmentRequester.findUnique,
-    },
     ticket: transaction.ticket,
     $transaction: vi.fn(async (callback: (client: typeof transaction) => Promise<unknown>) =>
       callback(transaction)),
-  } as unknown as ApplicationApiDatabase;
+  }, auth.database);
+  const app = createApp(database);
 
-  return { database, transaction, ticket };
+  return { database, transaction, ticket, app, login: () => auth.login(app) };
 }
 
 describe('Lab 2 reference data and ticket creation API', () => {
@@ -275,10 +222,11 @@ describe('Lab 2 reference data and ticket creation API', () => {
       { id: 2, name: 'Campus Wi-Fi' },
       { id: 1, name: 'Email' },
     ]);
-    const { database } = createTicketApiHarness();
+    const { database, app, login } = await createTicketApiHarness();
+    const requester = await login();
     (database.relatedSystem as unknown as { findMany: typeof findMany }).findMany = findMany;
 
-    const response = await request(createApp(database)).get('/api/related-systems');
+    const response = await requester.agent.get('/api/related-systems');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual([
@@ -293,10 +241,12 @@ describe('Lab 2 reference data and ticket creation API', () => {
   });
 
   it('creates one owned NEW ticket with a final backend ticket number', async () => {
-    const { database, transaction } = createTicketApiHarness();
+    const { database, transaction, login } = await createTicketApiHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database))
+    const response = await requester.agent
       .post('/api/tickets')
+      .set('X-CSRF-Token', requester.csrfToken)
       .send({
         requesterId: 1,
         categoryId: 2,
@@ -339,10 +289,12 @@ describe('Lab 2 reference data and ticket creation API', () => {
   });
 
   it('returns field errors and does not create a ticket for invalid or server-controlled fields', async () => {
-    const { database } = createTicketApiHarness();
+    const { database, login } = await createTicketApiHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database))
+    const response = await requester.agent
       .post('/api/tickets')
+      .set('X-CSRF-Token', requester.csrfToken)
       .send({
         requesterId: 1,
         categoryId: 2,
@@ -367,14 +319,13 @@ describe('Lab 2 reference data and ticket creation API', () => {
   });
 
   it('rejects inactive or missing reference records without creating a ticket', async () => {
-    const { database } = createTicketApiHarness();
-    const requesterFindUnique = (database.developmentRequester as unknown as {
-      findUnique: ReturnType<typeof vi.fn>;
-    }).findUnique;
-    requesterFindUnique.mockResolvedValue(null);
+    const { database, transaction, login } = await createTicketApiHarness();
+    const requester = await login();
+    transaction.category.findUnique.mockResolvedValue(null);
 
-    const response = await request(createApp(database))
+    const response = await requester.agent
       .post('/api/tickets')
+      .set('X-CSRF-Token', requester.csrfToken)
       .send({
         requesterId: 1,
         categoryId: 2,
@@ -386,7 +337,7 @@ describe('Lab 2 reference data and ticket creation API', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.fieldErrors).toEqual({
-      requesterId: 'Development Requester does not exist or is inactive.',
+      categoryId: 'Category does not exist or is inactive.',
     });
     expect((database.ticket as unknown as { create: ReturnType<typeof vi.fn> }).create).not.toHaveBeenCalled();
   });
@@ -394,9 +345,10 @@ describe('Lab 2 reference data and ticket creation API', () => {
 
 describe('Lab 2 request parsing API', () => {
   it('returns a safe 400 response for malformed JSON', async () => {
-    const { database } = createTicketApiHarness();
+    const { database, login } = await createTicketApiHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database))
+    const response = await requester.agent
       .post('/api/tickets')
       .set('Content-Type', 'application/json')
       .send('{"requesterId":');

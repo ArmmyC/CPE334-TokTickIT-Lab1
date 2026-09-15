@@ -3,7 +3,14 @@ import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/App';
 
-const requesters = [{ id: 1, name: 'Ariya Anderson', email: 'ariya@example.test' }];
+const authenticatedUser = {
+  id: 1,
+  name: 'Ariya Anderson',
+  email: 'ariya@example.test',
+  role: 'REQUESTER',
+  isActive: true,
+  mustChangePassword: false,
+};
 
 const activeDetail = {
   ticket: {
@@ -53,10 +60,10 @@ function setPath(path: string) {
 function stubAttachmentApi() {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.endsWith('/api/development-requesters')) {
-      return Promise.resolve({ ok: true, json: async () => requesters });
+    if (url === '/api/auth/me') {
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
     }
-    if (url === '/api/tickets/42?requesterId=1') {
+    if (url === '/api/tickets/42') {
       return Promise.resolve({ ok: true, json: async () => activeDetail });
     }
     if (url === '/api/tickets/42/attachments' && init?.method === 'POST') {
@@ -76,7 +83,6 @@ function stubAttachmentApi() {
 }
 
 async function renderDetail() {
-  sessionStorage.setItem('toktickit.developmentRequesterId', '1');
   setPath('/tickets/42');
   render(<BrowserRouter><App /></BrowserRouter>);
   expect(await screen.findByRole('heading', { name: 'Ticket Detail' })).toBeInTheDocument();
@@ -85,7 +91,7 @@ async function renderDetail() {
 
 beforeEach(() => {
   sessionStorage.clear();
-  setPath('/select-requester');
+  setPath('/tickets/42');
 });
 
 afterEach(() => {
@@ -102,11 +108,11 @@ describe('Lab 2 Ticket Detail attachment actions', () => {
 
     expect(screen.getByRole('link', { name: 'Preview evidence.pdf' })).toHaveAttribute(
       'href',
-      '/api/attachments/7/download?requesterId=1&disposition=inline',
+      '/api/attachments/7/download?disposition=inline',
     );
     expect(screen.getByRole('link', { name: 'Download evidence.pdf' })).toHaveAttribute(
       'href',
-      '/api/attachments/7/download?requesterId=1&disposition=attachment',
+      '/api/attachments/7/download?disposition=attachment',
     );
     expect(screen.getByRole('button', { name: 'Remove Attachment evidence.pdf' })).toBeInTheDocument();
   });

@@ -3,10 +3,14 @@ import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/App';
 
-const requesters = [
-  { id: 1, name: 'Ariya Anderson', email: 'ariya@example.test' },
-  { id: 2, name: 'Narin Chai', email: 'narin@example.test' },
-];
+const authenticatedUser = {
+  id: 1,
+  name: 'Ariya Anderson',
+  email: 'ariya@example.test',
+  role: 'REQUESTER',
+  isActive: true,
+  mustChangePassword: false,
+};
 
 const categories = [
   { id: 2, name: 'Hardware' },
@@ -46,9 +50,7 @@ function stubCreateTicketApi(
 ) {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.endsWith('/development-requesters')) {
-      return Promise.resolve({ ok: true, json: async () => requesters });
-    }
+    if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
     if (url.endsWith('/categories')) {
       return Promise.resolve({ ok: true, json: async () => categories });
     }
@@ -83,7 +85,6 @@ function stubCreateTicketApi(
 }
 
 async function renderCreateTicket() {
-  sessionStorage.setItem('toktickit.developmentRequesterId', '1');
   setPath('/tickets/new');
   render(<BrowserRouter><App /></BrowserRouter>);
   expect(await screen.findByRole('heading', { name: 'Create Ticket' })).toBeInTheDocument();
@@ -92,7 +93,7 @@ async function renderCreateTicket() {
 
 beforeEach(() => {
   sessionStorage.clear();
-  setPath('/select-requester');
+  setPath('/tickets/new');
 });
 
 afterEach(() => {
@@ -101,102 +102,36 @@ afterEach(() => {
   setPath('/');
 });
 
-describe('Lab 2 requester selection and shell context', () => {
-  it('shows a loading state while active requesters are loading', () => {
-    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
-
-    render(<BrowserRouter><App /></BrowserRouter>);
-
-    expect(screen.getByRole('status')).toHaveTextContent(/Loading Development Requesters/i);
-  });
-
-  it('selects an active requester, persists the context, and opens the shell', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: async () => requesters }),
-    );
-
-    render(<BrowserRouter><App /></BrowserRouter>);
-
-    const select = await screen.findByRole('combobox', { name: /Development Requester/i });
-    const continueButton = screen.getByRole('button', { name: 'Continue' });
-    expect(continueButton).toBeDisabled();
-    expect(screen.queryByText('Mali Boonmee')).not.toBeInTheDocument();
-
-    fireEvent.change(select, { target: { value: '2' } });
-    expect(continueButton).toBeEnabled();
-    fireEvent.click(continueButton);
-
-    expect(await screen.findByRole('heading', { name: 'My Tickets' })).toBeInTheDocument();
-    expect(screen.getAllByText('Narin Chai').length).toBeGreaterThan(0);
-    expect(sessionStorage.getItem('toktickit.developmentRequesterId')).toBe('2');
-  });
-
-  it('shows an empty state and can retry to load active requesters', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => [] })
-      .mockResolvedValueOnce({ ok: true, json: async () => requesters });
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<BrowserRouter><App /></BrowserRouter>);
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/No active Development Requesters/i);
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByRole('combobox', { name: /Development Requester/i })).toBeInTheDocument();
-  });
-
-  it('shows an API failure with a retry action', async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new Error('connection refused'));
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<BrowserRouter><App /></BrowserRouter>);
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/Unable to load Development Requesters/i);
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
-  });
-
-  it('guards ticket routes when no valid requester context exists', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => requesters }));
+describe('Lab 3 authenticated requester context', () => {
+  it('requires an authenticated session before showing requester routes', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === '/api/auth/me') return Promise.resolve({ ok: false, status: 401, json: async () => ({ error: 'Authentication is required.' }) });
+      return Promise.reject(new Error(`Unexpected request: ${String(input)}`));
+    }));
     setPath('/tickets');
 
     render(<BrowserRouter><App /></BrowserRouter>);
 
-    expect(await screen.findByRole('heading', { name: /Select a Development Requester/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in to TokTickIT' })).toBeInTheDocument();
+    expect(screen.queryByText(/Development Requester/i)).not.toBeInTheDocument();
+    expect(sessionStorage.length).toBe(0);
   });
 
-  it('clears an invalid stored requester id before allowing ticket routes', async () => {
-    sessionStorage.setItem('toktickit.developmentRequesterId', '999');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => requesters }));
-    setPath('/tickets');
+  it('renders the authenticated user as read-only ownership context', async () => {
+    stubCreateTicketApi();
+    await renderCreateTicket();
 
-    render(<BrowserRouter><App /></BrowserRouter>);
-
-    expect(await screen.findByRole('heading', { name: /Select a Development Requester/i })).toBeInTheDocument();
-    expect(sessionStorage.getItem('toktickit.developmentRequesterId')).toBeNull();
-  });
-
-  it('clears the old context when Change Requester is selected', async () => {
-    sessionStorage.setItem('toktickit.developmentRequesterId', '1');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => requesters }));
-    setPath('/tickets');
-
-    render(<BrowserRouter><App /></BrowserRouter>);
-
-    expect(await screen.findByRole('heading', { name: 'My Tickets' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Change Requester' }));
-
-    expect(await screen.findByRole('heading', { name: /Select a Development Requester/i })).toBeInTheDocument();
-    expect(sessionStorage.getItem('toktickit.developmentRequesterId')).toBeNull();
+    expect(screen.getByLabelText('Requester')).toHaveValue('Ariya Anderson (ariya@example.test)');
+    expect(screen.queryByRole('combobox', { name: /Requester/i })).not.toBeInTheDocument();
   });
 });
 
 describe('Lab 2 Create Ticket screen', () => {
-  it('loads active reference data and shows the selected requester as read-only context', async () => {
+  it('loads active reference data and shows the authenticated requester as read-only context', async () => {
     stubCreateTicketApi();
     await renderCreateTicket();
 
-    expect(screen.getByLabelText('Development Requester')).toHaveValue('Ariya Anderson');
+    expect(screen.getByLabelText('Requester')).toHaveValue('Ariya Anderson (ariya@example.test)');
     expect(screen.getByRole('option', { name: 'Hardware' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Corporate Laptop' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Requested Priority' })).toHaveValue('MEDIUM');
@@ -230,7 +165,6 @@ describe('Lab 2 Create Ticket screen', () => {
       String(url).endsWith('/tickets') && init?.method === 'POST');
     expect(createCall).toBeDefined();
     expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
-      requesterId: 1,
       categoryId: 2,
       relatedSystemId: 4,
       summary: 'Laptop battery drains quickly',
@@ -270,7 +204,7 @@ describe('Lab 2 Create Ticket screen', () => {
     let uploadCount = 0;
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith('/development-requesters')) return Promise.resolve({ ok: true, json: async () => requesters });
+      if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
       if (url.endsWith('/categories')) return Promise.resolve({ ok: true, json: async () => categories });
       if (url.endsWith('/related-systems')) return Promise.resolve({ ok: true, json: async () => relatedSystems });
       if (url.endsWith('/tickets') && init?.method === 'POST') return Promise.resolve({ ok: true, json: async () => ({ ticket: createdTicket }) });
