@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import type { AuthDatabaseLike } from './types.js';
+import type { AuthDatabaseLike, AuthUserRole } from './types.js';
 import {
   CSRF_COOKIE_NAME,
   type AuthContext,
@@ -27,6 +27,11 @@ const AUTHENTICATION_REQUIRED = {
 const CSRF_VALIDATION_FAILED = {
   error: 'The request could not be verified.',
   code: 'CSRF_VALIDATION_FAILED',
+};
+
+const FORBIDDEN = {
+  error: 'You do not have permission to access this resource.',
+  code: 'FORBIDDEN',
 };
 
 export function sameOrigin(request: Request): boolean {
@@ -95,6 +100,24 @@ export function requireAuthenticated(database: AuthDatabaseLike): RequestHandler
     } catch (error) {
       next(error);
     }
+  };
+}
+
+export function requireRole(database: AuthDatabaseLike, roles: AuthUserRole[]): RequestHandler {
+  return (request: Request, response: Response, next: NextFunction) => {
+    if (!hasAuthDatabase(database)) {
+      next();
+      return;
+    }
+    if (!request.auth) {
+      sendAuthenticationRequired(response);
+      return;
+    }
+    if (!roles.includes(request.auth.user.role)) {
+      response.status(403).json(FORBIDDEN);
+      return;
+    }
+    next();
   };
 }
 

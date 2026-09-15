@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useRequesterContext, type DevelopmentRequester } from './requester-context';
+import { useAuth, type AuthUser } from './auth-context';
+import { apiFetch, readJson } from './api';
 
 type ReferenceItem = {
   id: number;
@@ -19,7 +20,6 @@ type TicketRecord = {
   id: number;
   ticketNumber: string;
   ticketDate: string;
-  requesterId: number;
   categoryId: number;
   relatedSystemId: number;
   summary: string;
@@ -93,14 +93,6 @@ function isTicket(value: unknown): value is TicketRecord {
   );
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
 function validateForm(form: FormValues): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!form.categoryId) errors.categoryId = 'Category is required.';
@@ -116,12 +108,12 @@ function validateForm(form: FormValues): Record<string, string> {
   return errors;
 }
 
-function ReadOnlyRequester({ requester }: { requester: DevelopmentRequester }) {
+function ReadOnlyRequester({ user }: { user: AuthUser }) {
   return (
     <div className="ticket-field ticket-field-readonly">
-      <label htmlFor="development-requester">Development Requester</label>
-      <input id="development-requester" value={requester.name} readOnly aria-readonly="true" />
-      <small>Testing context, not authentication</small>
+      <label htmlFor="authenticated-requester">Requester</label>
+      <input id="authenticated-requester" value={`${user.name} (${user.email})`} readOnly aria-readonly="true" />
+      <small>Your authenticated account owns this Ticket.</small>
     </div>
   );
 }
@@ -131,7 +123,7 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 }
 
 export function CreateTicketPage() {
-  const { selectedRequester } = useRequesterContext();
+  const { user } = useAuth();
   const [categories, setCategories] = useState<ReferenceItem[]>([]);
   const [relatedSystems, setRelatedSystems] = useState<ReferenceItem[]>([]);
   const [referenceState, setReferenceState] = useState<ReferenceState>('loading');
@@ -150,8 +142,8 @@ export function CreateTicketPage() {
     setReferenceError(null);
     try {
       const [categoryResponse, relatedSystemResponse] = await Promise.all([
-        fetch('/api/categories'),
-        fetch('/api/related-systems'),
+        apiFetch('/api/categories'),
+        apiFetch('/api/related-systems'),
       ]);
       const categoryBody = await readJson(categoryResponse);
       const relatedSystemBody = await readJson(relatedSystemResponse);
@@ -215,7 +207,7 @@ export function CreateTicketPage() {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (submitState === 'submitting' || !selectedRequester) return;
+    if (submitState === 'submitting' || !user) return;
     const errors = validateForm(form);
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -228,11 +220,10 @@ export function CreateTicketPage() {
     setFieldErrors({});
     setUploadFailures([]);
     try {
-      const response = await fetch('/api/tickets', {
+      const response = await apiFetch('/api/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          requesterId: selectedRequester.id,
           categoryId: Number(form.categoryId),
           relatedSystemId: Number(form.relatedSystemId),
           summary: form.summary.trim(),
@@ -252,9 +243,8 @@ export function CreateTicketPage() {
       for (const file of files) {
         try {
           const uploadBody = new FormData();
-          uploadBody.append('requesterId', String(selectedRequester.id));
           uploadBody.append('file', file, file.name);
-          const uploadResponse = await fetch(`/api/tickets/${body.ticket.id}/attachments`, {
+          const uploadResponse = await apiFetch(`/api/tickets/${body.ticket.id}/attachments`, {
             method: 'POST',
             body: uploadBody,
           });
@@ -275,7 +265,7 @@ export function CreateTicketPage() {
     }
   };
 
-  if (!selectedRequester) return null;
+  if (!user) return null;
 
   return (
     <section className="create-ticket-page" aria-labelledby="create-ticket-title">
@@ -302,7 +292,7 @@ export function CreateTicketPage() {
         <form className="ticket-form" onSubmit={submit} aria-busy={submitState === 'submitting'} noValidate>
           {formAlert && <div role="alert" className="state-message state-message-error">{formAlert}</div>}
           <div className="ticket-form-grid">
-            <ReadOnlyRequester requester={selectedRequester} />
+            <ReadOnlyRequester user={user} />
             <div className="ticket-field">
               <label className="required-label" htmlFor="category">Category</label>
               <select id="category" value={form.categoryId} onChange={(event) => updateForm('categoryId', event.target.value)} aria-invalid={Boolean(fieldErrors.categoryId)} aria-describedby="category-error">

@@ -3,10 +3,14 @@ import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/App';
 
-const requesters = [
-  { id: 1, name: 'Ariya Anderson', email: 'ariya@example.test' },
-  { id: 2, name: 'Narin Chai', email: 'narin@example.test' },
-];
+const authenticatedUser = {
+  id: 1,
+  name: 'Ariya Anderson',
+  email: 'ariya@example.test',
+  role: 'REQUESTER',
+  isActive: true,
+  mustChangePassword: false,
+};
 
 const detailResponse = {
   ticket: {
@@ -60,9 +64,7 @@ function stubDetailApi(
 ) {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.endsWith('/api/development-requesters')) {
-      return Promise.resolve({ ok: true, json: async () => requesters });
-    }
+    if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
     if (url.startsWith('/api/tickets/42')) {
       return Promise.resolve(detail);
     }
@@ -73,7 +75,6 @@ function stubDetailApi(
 }
 
 async function renderDetail() {
-  sessionStorage.setItem('toktickit.developmentRequesterId', '1');
   setPath('/tickets/42');
   render(<BrowserRouter><App /></BrowserRouter>);
   expect(await screen.findByRole('heading', { name: 'Ticket Detail' })).toBeInTheDocument();
@@ -81,7 +82,7 @@ async function renderDetail() {
 
 beforeEach(() => {
   sessionStorage.clear();
-  setPath('/select-requester');
+  setPath('/tickets/42');
 });
 
 afterEach(() => {
@@ -107,16 +108,14 @@ describe('Lab 2 Ticket Detail screen', () => {
     expect(screen.getByText('Removed', { exact: true })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to My Tickets' })).toHaveAttribute('href', '/tickets');
     expect(screen.queryByRole('textbox', { name: /Summary/i })).not.toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/tickets/42?requesterId=1')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/tickets/42')).toBe(true);
   });
 
   it('announces loading and then renders the owned detail after the request resolves', async () => {
     let resolveDetail: ((response: { ok: boolean; json: () => Promise<unknown> }) => void) | undefined;
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/api/development-requesters')) {
-        return Promise.resolve({ ok: true, json: async () => requesters });
-      }
+      if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
       if (url.startsWith('/api/tickets/42')) {
         return new Promise((resolve) => { resolveDetail = resolve; });
       }
@@ -141,9 +140,7 @@ describe('Lab 2 Ticket Detail screen', () => {
 
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/api/development-requesters')) {
-        return Promise.resolve({ ok: true, json: async () => requesters });
-      }
+      if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
       if (url.startsWith('/api/tickets/42')) {
         return Promise.resolve({ ok: true, json: async () => detailResponse });
       }

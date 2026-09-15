@@ -6,7 +6,14 @@ import multer, { MulterError } from 'multer';
 import { Prisma } from '@prisma/client';
 import { prisma } from './lib/prisma.js';
 import { localAttachmentStorage, type AttachmentStorage } from './lib/attachment-storage.js';
-import { createSessionMiddleware, enforceSameOrigin, requireNormalAccess } from './auth/middleware.js';
+import {
+  createSessionMiddleware,
+  enforceSameOrigin,
+  requireCsrf,
+  requireNormalAccess,
+  requireRole,
+  sendAuthenticationRequired,
+} from './auth/middleware.js';
 import { createAuthRouter } from './auth/routes.js';
 import type { AuthDatabase } from './auth/types.js';
 
@@ -48,26 +55,6 @@ export type RelatedSystemApiDatabase = {
   };
 };
 
-export type DevelopmentRequesterRecord = {
-  id: number;
-  name: string;
-  email: string;
-};
-
-export type DevelopmentRequesterApiDatabase = {
-  developmentRequester: {
-    findMany(args: {
-      where: { isActive: true };
-      select: { id: true; name: true; email: true };
-      orderBy: { name: 'asc' };
-    }): Promise<DevelopmentRequesterRecord[]>;
-    findUnique(args: {
-      where: { id: number };
-      select: { id: true; isActive: true };
-    }): Promise<{ id: number; isActive: boolean } | null>;
-  };
-};
-
 export type TicketRecord = {
   id: number;
   ticketNumber: string;
@@ -85,7 +72,11 @@ export type TicketRecord = {
 };
 
 export type TicketDetailRecord = TicketRecord & {
-  requester: DevelopmentRequesterRecord;
+  requester: {
+    id: number;
+    name: string;
+    email: string;
+  };
   category: CategoryRecord;
   relatedSystem: RelatedSystemRecord;
 };
@@ -161,7 +152,6 @@ type TicketListFindManyArgs = {
 type TicketListCountArgs = { where: TicketListWhere };
 
 type TicketTransactionDatabase = {
-  developmentRequester: DevelopmentRequesterApiDatabase['developmentRequester'];
   category: {
     findUnique(args: {
       where: { id: number };
@@ -205,10 +195,9 @@ export type TicketApiDatabase = {
 };
 
 export type ApplicationApiDatabase = CategoryApiDatabase &
-  Partial<DevelopmentRequesterApiDatabase & RelatedSystemApiDatabase & TicketApiDatabase & AuthDatabase>;
+  Partial<RelatedSystemApiDatabase & TicketApiDatabase & AuthDatabase>;
 
 type CreateTicketInput = {
-  requesterId: number;
   categoryId: number;
   relatedSystemId: number;
   summary: string;
@@ -270,7 +259,6 @@ function parseQueryString(value: unknown): string | null | undefined {
 }
 
 type TicketListQuery = {
-  requesterId: number;
   page: number;
   pageSize: number;
   search?: string;
@@ -285,12 +273,6 @@ type TicketListQuery = {
 function parseTicketListQuery(query: unknown): TicketListQuery {
   const source = isRecord(query) ? query : {};
   const fieldErrors: Record<string, string> = {};
-
-  const requesterValue = parseQueryString(source.requesterId);
-  const requesterId = parsePositiveInteger(requesterValue);
-  if (requesterId === null) {
-    fieldErrors.requesterId = 'A positive active Development Requester id is required.';
-  }
 
   const pageValue = parseQueryString(source.page);
   const page = pageValue === undefined ? 1 : parsePositiveInteger(pageValue);
@@ -355,7 +337,6 @@ function parseTicketListQuery(query: unknown): TicketListQuery {
   }
 
   return {
-    requesterId: requesterId as number,
     page: page as number,
     pageSize: pageSize as number,
     ...(search ? { search } : {}),
@@ -394,10 +375,6 @@ function validateCreateTicketPayload(payload: unknown): CreateTicketInput {
     }
   }
 
-  const requesterId = parsePositiveInteger(payload.requesterId);
-  if (requesterId === null) {
-    fieldErrors.requesterId = 'Development Requester is required.';
-  }
   const categoryId = parsePositiveInteger(payload.categoryId);
   if (categoryId === null) {
     fieldErrors.categoryId = 'Category is required.';
@@ -427,7 +404,6 @@ function validateCreateTicketPayload(payload: unknown): CreateTicketInput {
   }
 
   return {
-    requesterId: requesterId as number,
     categoryId: categoryId as number,
     relatedSystemId: relatedSystemId as number,
     summary,
@@ -507,14 +483,6 @@ function validateAttachmentFile(file: Express.Multer.File): void {
 function attachmentContentDisposition(originalName: string, disposition: 'inline' | 'attachment'): string {
   const safeName = path.basename(originalName.replaceAll('\\', '/')).replace(/["\r\n]/g, '_') || 'attachment';
   return `${disposition}; filename="${safeName}"`;
-}
-
-function parseAttachmentRequesterId(value: unknown): number {
-  const requesterId = parsePositiveInteger(value);
-  if (requesterId === null) {
-    throw new AttachmentRequestError(400, 'A valid requesterId is required.');
-  }
-  return requesterId;
 }
 
 function parseAttachmentId(value: unknown): number {
@@ -607,51 +575,17 @@ export function createApp(
     }
   });
 
-  app.get('/api/development-requesters', async (_request, response) => {
+  app.get('/api/tickets', requireRole(database, ['REQUESTER']), async (request, response) => {
     try {
-      if (!database.developmentRequester) {
-        throw new Error('Development Requester database access is unavailable.');
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
       }
-
-      const requesters = await database.developmentRequester.findMany({
-        where: {
-          isActive: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-        orderBy: {
-          name: 'asc',
-        },
-      });
-
-      response.status(200).json(requesters);
-    } catch (error) {
-      console.error('TokTickIT Development Requesters API error:', error);
-      response.status(500).json({
-        error: 'Unable to load Development Requesters.',
-      });
-    }
-  });
-
-  app.get('/api/tickets', async (request, response) => {
-    try {
-      if (!database.ticket?.findMany || !database.ticket.count || !database.developmentRequester?.findUnique) {
+      if (!database.ticket?.findMany || !database.ticket.count) {
         throw new Error('Ticket list database access is unavailable.');
       }
 
       const query = parseTicketListQuery(request.query);
-      const requester = await database.developmentRequester.findUnique({
-        where: { id: query.requesterId },
-        select: { id: true, isActive: true },
-      });
-      if (!requester?.isActive) {
-        throw new TicketListValidationError({
-          requesterId: 'Development Requester does not exist or is inactive.',
-        });
-      }
 
       if (query.categoryId !== undefined) {
         if (!database.category.findUnique) {
@@ -684,7 +618,7 @@ export function createApp(
       }
 
       const where: TicketListWhere = {
-        requesterId: query.requesterId,
+        requesterId: request.auth.user.id,
         ...(query.search
           ? {
               OR: [
@@ -748,14 +682,17 @@ export function createApp(
     }
   });
 
-  app.get('/api/tickets/:ticketId', async (request, response) => {
+  app.get('/api/tickets/:ticketId', requireRole(database, ['REQUESTER']), async (request, response) => {
     try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
       if (!database.ticket?.findUnique || !database.attachment?.findMany) {
         throw new Error('Ticket detail database access is unavailable.');
       }
 
       const ticketId = parsePositiveInteger(request.params.ticketId);
-      const requesterId = parseAttachmentRequesterId(request.query.requesterId);
       if (ticketId === null) {
         throw new AttachmentRequestError(400, 'A valid ticketId is required.');
       }
@@ -785,7 +722,7 @@ export function createApp(
           updatedAt: true,
         },
       });
-      if (!ticket || ticket.requesterId !== requesterId) {
+      if (!ticket || ticket.requesterId !== request.auth.user.id) {
         response.status(404).json({ error: 'Ticket not found.' });
         return;
       }
@@ -820,24 +757,19 @@ export function createApp(
     }
   });
 
-  app.post('/api/tickets', async (request, response) => {
+  app.post('/api/tickets', requireRole(database, ['REQUESTER']), requireCsrf(), async (request, response) => {
     try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const authenticatedRequesterId = request.auth.user.id;
       const input = validateCreateTicketPayload(request.body);
       if (!database.$transaction) {
         throw new Error('Ticket database access is unavailable.');
       }
 
       const ticket = await database.$transaction(async (transaction) => {
-        const requester = await transaction.developmentRequester.findUnique({
-          where: { id: input.requesterId },
-          select: { id: true, isActive: true },
-        });
-        if (!requester?.isActive) {
-          throw new TicketValidationError({
-            requesterId: 'Development Requester does not exist or is inactive.',
-          });
-        }
-
         const category = await transaction.category.findUnique({
           where: { id: input.categoryId },
           select: { id: true, isActive: true },
@@ -863,7 +795,7 @@ export function createApp(
         const createdTicket = await transaction.ticket.create({
           data: {
             ticketNumber: placeholder,
-            requesterId: input.requesterId,
+            requesterId: authenticatedRequesterId,
             categoryId: input.categoryId,
             relatedSystemId: input.relatedSystemId,
             summary: input.summary,
@@ -896,7 +828,7 @@ export function createApp(
     }
   });
 
-  app.post('/api/tickets/:ticketId/attachments', (request, response, next) => {
+  app.post('/api/tickets/:ticketId/attachments', requireRole(database, ['REQUESTER']), requireCsrf(), (request, response, next) => {
     upload(request, response, (error: unknown) => {
       if (!error) {
         next();
@@ -915,13 +847,16 @@ export function createApp(
   }, async (request, response) => {
     let storedKey: string | null = null;
     try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
       if (!database.ticket || !database.attachment) {
         throw new Error('Attachment database access is unavailable.');
       }
       const ticketId = parsePositiveInteger(request.params.ticketId);
-      const requesterId = parsePositiveInteger(request.body?.requesterId);
-      if (ticketId === null || requesterId === null) {
-        throw new AttachmentRequestError(400, 'A valid requesterId and ticketId are required.');
+      if (ticketId === null) {
+        throw new AttachmentRequestError(400, 'A valid ticketId is required.');
       }
       if (!request.file) {
         throw new AttachmentRequestError(400, 'Select one attachment to upload.');
@@ -931,7 +866,7 @@ export function createApp(
         where: { id: ticketId },
         select: { id: true, requesterId: true },
       });
-      if (!ticket || ticket.requesterId !== requesterId) {
+      if (!ticket || ticket.requesterId !== request.auth.user.id) {
         throw new AttachmentRequestError(404, 'Ticket not found.');
       }
 
@@ -994,11 +929,14 @@ export function createApp(
     return attachment;
   };
 
-  app.get('/api/attachments/:attachmentId', async (request, response) => {
+  app.get('/api/attachments/:attachmentId', requireRole(database, ['REQUESTER']), async (request, response) => {
     try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
       const attachmentId = parseAttachmentId(request.params.attachmentId);
-      const requesterId = parseAttachmentRequesterId(request.query.requesterId);
-      const attachment = await findOwnedAttachment(attachmentId, requesterId);
+      const attachment = await findOwnedAttachment(attachmentId, request.auth.user.id);
       if (!attachment) {
         response.status(404).json({ error: 'Attachment not found.' });
         return;
@@ -1015,16 +953,19 @@ export function createApp(
     }
   });
 
-  app.get('/api/attachments/:attachmentId/download', async (request, response) => {
+  app.get('/api/attachments/:attachmentId/download', requireRole(database, ['REQUESTER']), async (request, response) => {
     try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
       const attachmentId = parseAttachmentId(request.params.attachmentId);
-      const requesterId = parseAttachmentRequesterId(request.query.requesterId);
       const dispositionValue = request.query.disposition;
       if (dispositionValue !== undefined && dispositionValue !== 'inline' && dispositionValue !== 'attachment') {
         throw new AttachmentRequestError(400, 'Disposition must be inline or attachment.');
       }
       const disposition = dispositionValue === 'inline' ? 'inline' : 'attachment';
-      const attachment = await findOwnedAttachment(attachmentId, requesterId);
+      const attachment = await findOwnedAttachment(attachmentId, request.auth.user.id);
       if (!attachment || attachment.removedAt !== null) {
         response.status(404).json({ error: 'Attachment not found.' });
         return;
@@ -1061,13 +1002,16 @@ export function createApp(
     }
   });
 
-  app.delete('/api/attachments/:attachmentId', async (request, response) => {
+  app.delete('/api/attachments/:attachmentId', requireRole(database, ['REQUESTER']), requireCsrf(), async (request, response) => {
     try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
       if (!database.attachment?.update) {
         throw new Error('Attachment database access is unavailable.');
       }
       const attachmentId = parseAttachmentId(request.params.attachmentId);
-      const requesterId = parseAttachmentRequesterId(request.body?.requesterId);
       const removalReason = typeof request.body?.removalReason === 'string'
         ? request.body.removalReason.trim()
         : '';
@@ -1075,7 +1019,7 @@ export function createApp(
         throw new AttachmentRequestError(400, 'Removal reason must be between 5 and 500 characters.');
       }
 
-      const attachment = await findOwnedAttachment(attachmentId, requesterId);
+      const attachment = await findOwnedAttachment(attachmentId, request.auth.user.id);
       if (!attachment) {
         response.status(404).json({ error: 'Attachment not found.' });
         return;

@@ -2,6 +2,7 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { createApp, type ApplicationApiDatabase, type AttachmentRecord } from '../../src/app.js';
 import type { AttachmentStorage } from '../../src/lib/attachment-storage.js';
+import { createAuthTestHarness, withAuthDatabase } from '../lab-03/auth-test-harness.js';
 
 const ticketDate = new Date('2026-08-21T10:00:00.000Z');
 const removedAt = new Date('2026-08-21T11:00:00.000Z');
@@ -49,7 +50,7 @@ const ticketDetail = {
   relatedSystem: { id: 7, name: 'Corporate Laptop' },
 };
 
-function createDetailHarness() {
+async function createDetailHarness() {
   const attachments = new Map<number, AttachmentRecord>([
     [activeAttachment.id, activeAttachment],
     [removedAttachment.id, removedAttachment],
@@ -75,20 +76,23 @@ function createDetailHarness() {
     remove: vi.fn().mockResolvedValue(undefined),
     read: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.7 test bytes')),
   };
-  const database = {
+  const auth = await createAuthTestHarness();
+  const database = withAuthDatabase({
     category: { findMany: vi.fn() },
     relatedSystem: { findMany: vi.fn() },
-    developmentRequester: { findMany: vi.fn() },
     ticket: { findUnique: ticketFindUnique },
     attachment: {
       findUnique: attachmentFindUnique,
       findMany: attachmentFindMany,
       update: attachmentUpdate,
     },
-  } as unknown as ApplicationApiDatabase;
+  }, auth.database);
+  const app = createApp(database);
 
   return {
     database,
+    app,
+    login: (email?: string) => auth.login(app, email),
     storage,
     ticketFindUnique,
     attachmentFindUnique,
@@ -99,9 +103,10 @@ function createDetailHarness() {
 
 describe('Lab 2 Ticket Detail API', () => {
   it('returns owned read-only Ticket fields and active plus removed attachment metadata', async () => {
-    const { database } = createDetailHarness();
+    const { app, login } = await createDetailHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database)).get('/api/tickets/42?requesterId=1');
+    const response = await requester.agent.get('/api/tickets/42?requesterId=2');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -139,28 +144,31 @@ describe('Lab 2 Ticket Detail API', () => {
   });
 
   it('uses the same safe 404 for a foreign Ticket that exists', async () => {
-    const { database } = createDetailHarness();
+    const { app, login } = await createDetailHarness();
+    const requester = await login('mali@example.test');
 
-    const response = await request(createApp(database)).get('/api/tickets/42?requesterId=2');
+    const response = await requester.agent.get('/api/tickets/42?requesterId=1');
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: 'Ticket not found.' });
   });
 
   it('uses the same safe 404 for a missing Ticket', async () => {
-    const { database, ticketFindUnique } = createDetailHarness();
+    const { app, login, ticketFindUnique } = await createDetailHarness();
+    const requester = await login();
     ticketFindUnique.mockResolvedValue(null);
 
-    const response = await request(createApp(database)).get('/api/tickets/42?requesterId=1');
+    const response = await requester.agent.get('/api/tickets/42');
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: 'Ticket not found.' });
   });
 
   it('rejects malformed Ticket Detail identifiers with a safe 400', async () => {
-    const { database } = createDetailHarness();
+    const { app, login } = await createDetailHarness();
+    const requester = await login();
 
-    const response = await request(createApp(database)).get('/api/tickets/not-a-ticket?requesterId=1');
+    const response = await requester.agent.get('/api/tickets/not-a-ticket');
 
     expect(response.status).toBe(400);
     expect(response.body.error).toEqual(expect.any(String));

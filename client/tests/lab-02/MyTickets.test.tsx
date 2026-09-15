@@ -3,10 +3,14 @@ import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/App';
 
-const requesters = [
-  { id: 1, name: 'Ariya Anderson', email: 'ariya@example.test' },
-  { id: 2, name: 'Narin Chai', email: 'narin@example.test' },
-];
+const authenticatedUser = {
+  id: 1,
+  name: 'Ariya Anderson',
+  email: 'ariya@example.test',
+  role: 'REQUESTER',
+  isActive: true,
+  mustChangePassword: false,
+};
 const categories = [
   { id: 2, name: 'Hardware' },
   { id: 3, name: 'Software' },
@@ -51,7 +55,7 @@ function stubMyTicketsApi(
 ) {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.endsWith('/development-requesters')) return Promise.resolve({ ok: true, json: async () => requesters });
+    if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
     if (url.endsWith('/categories')) return Promise.resolve({ ok: true, json: async () => categories });
     if (url.endsWith('/related-systems')) return Promise.resolve({ ok: true, json: async () => relatedSystems });
     if (url.includes('/tickets?') || url.endsWith('/tickets')) return Promise.resolve(response);
@@ -62,7 +66,6 @@ function stubMyTicketsApi(
 }
 
 async function renderMyTickets() {
-  sessionStorage.setItem('toktickit.developmentRequesterId', '1');
   setPath('/tickets');
   render(<BrowserRouter><App /></BrowserRouter>);
   expect(await screen.findByRole('heading', { name: 'My Tickets' })).toBeInTheDocument();
@@ -70,7 +73,7 @@ async function renderMyTickets() {
 
 beforeEach(() => {
   sessionStorage.clear();
-  setPath('/select-requester');
+  setPath('/tickets');
 });
 
 afterEach(() => {
@@ -85,7 +88,7 @@ describe('Lab 2 My Tickets screen', () => {
     let resolveTickets: ((response: { ok: boolean; json: () => Promise<unknown> }) => void) | undefined;
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/development-requesters')) return Promise.resolve({ ok: true, json: async () => requesters });
+      if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
       if (url.endsWith('/categories')) return Promise.resolve({ ok: true, json: async () => categories });
       if (url.endsWith('/related-systems')) return Promise.resolve({ ok: true, json: async () => relatedSystems });
       if (url.includes('/tickets?')) return new Promise((resolve) => { resolveTickets = resolve; });
@@ -103,17 +106,17 @@ describe('Lab 2 My Tickets screen', () => {
     expect(screen.getAllByText('NEW').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('link', { name: 'Create Ticket' })[0]).toHaveAttribute('href', '/tickets/new');
     expect(screen.getAllByRole('link', { name: /View Ticket/i })[0]).toHaveAttribute('href', '/tickets/42');
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('requesterId=1'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('requesterId='))).toBe(false);
   });
 
   it('shows the requester empty state and distinguishes a filtered no-results state', async () => {
     const fetchMock = stubMyTicketsApi({ ok: true, json: async () => listResponse({ items: [], totalItems: 0, totalPages: 0 }) });
     await renderMyTickets();
-    expect(await screen.findByText(/No Tickets yet for this Requester/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No Tickets yet for your account/i)).toBeInTheDocument();
 
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/development-requesters')) return Promise.resolve({ ok: true, json: async () => requesters });
+      if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
       if (url.endsWith('/categories')) return Promise.resolve({ ok: true, json: async () => categories });
       if (url.endsWith('/related-systems')) return Promise.resolve({ ok: true, json: async () => relatedSystems });
       if (url.includes('/tickets?')) return Promise.resolve({ ok: true, json: async () => listResponse({ items: [], totalItems: 0, totalPages: 0 }) });
@@ -135,7 +138,7 @@ describe('Lab 2 My Tickets screen', () => {
 
     await waitFor(() => {
       const urls = fetchMock.mock.calls.map(([url]) => String(url));
-      expect(urls.some((url) => url.includes('requesterId=1') && url.includes('categoryId=2') && url.includes('search=battery') && url.includes('sortBy=ticketNumber') && url.includes('sortOrder=asc') && url.includes('page=1'))).toBe(true);
+      expect(urls.some((url) => !url.includes('requesterId=') && url.includes('categoryId=2') && url.includes('search=battery') && url.includes('sortBy=ticketNumber') && url.includes('sortOrder=asc') && url.includes('page=1'))).toBe(true);
     });
   });
 
