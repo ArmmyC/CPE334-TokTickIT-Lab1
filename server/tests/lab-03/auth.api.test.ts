@@ -141,13 +141,17 @@ describe('Lab 3 password contract', () => {
     expect(await verifyPassword('Wrong-password1!', hash)).toBe(false);
   });
 
+  it('accepts a hyphen as the only non-alphanumeric password character', () => {
+    expect(validatePassword('Aaaaaaaa111-')).toBeNull();
+  });
+
   it.each([
     ['', 'empty'],
     ['short1!', 'too short'],
     ['all-lowercase1!', 'missing uppercase'],
     ['ALL-UPPERCASE1!', 'missing lowercase'],
     ['No-digit-password!', 'missing digit'],
-    ['No-symbol-password1', 'missing symbol'],
+    ['NoSymbolpassword1', 'missing symbol'],
     ['A'.repeat(129), 'too long'],
   ])('rejects a password that is %s', (password) => {
     expect(validatePassword(password)).not.toBeNull();

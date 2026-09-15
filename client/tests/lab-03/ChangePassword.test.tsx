@@ -102,6 +102,19 @@ describe('Lab 3 Change Password screen', () => {
     });
   });
 
+  it('accepts a hyphen as the only non-alphanumeric password character', async () => {
+    const fetchMock = installChangePasswordFetch();
+    await renderChangePassword();
+
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'Initial-password1!' } });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'Aaaaaaaa111-' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'Aaaaaaaa111-' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save password' }));
+
+    expect(await screen.findByRole('heading', { name: 'My Tickets' })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/auth/change-password')).toBe(true);
+  });
+
   it('shows safe failure feedback and clears password fields after a rejected change', async () => {
     installChangePasswordFetch(jsonResponse({
       error: 'Current password is incorrect.',

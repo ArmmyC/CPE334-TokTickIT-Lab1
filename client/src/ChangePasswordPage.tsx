@@ -11,7 +11,7 @@ function validatePassword(value: string): string | null {
   if (!/[A-Z]/.test(value)) return 'Password must contain at least one uppercase letter.';
   if (!/[a-z]/.test(value)) return 'Password must contain at least one lowercase letter.';
   if (!/[0-9]/.test(value)) return 'Password must contain at least one number.';
-  if (!/[^\p{L}\p{N}\s-]/u.test(value)) return 'Password must contain at least one symbol.';
+  if (!/[^\p{L}\p{N}\s]/u.test(value)) return 'Password must contain at least one symbol.';
   return null;
 }
 
