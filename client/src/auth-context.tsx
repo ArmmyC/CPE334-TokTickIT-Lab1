@@ -23,6 +23,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   loadState: AuthLoadState;
   errorMessage: string | null;
+  retrySessionCheck: () => void;
   login: (email: string, password: string) => Promise<AuthUser>;
   changePassword: (currentPassword: string, newPassword: string, confirmPassword: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
@@ -90,9 +91,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loadState, setLoadState] = useState<AuthLoadState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sessionCheckKey, setSessionCheckKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadState('loading');
+    setErrorMessage(null);
     void apiFetch('/api/auth/me')
       .then(async (response) => {
         const rawBody = await readJson(response);
@@ -130,6 +134,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, [sessionCheckKey]);
+
+  const retrySessionCheck = useCallback(() => {
+    setUser(null);
+    setLoadState('loading');
+    setErrorMessage(null);
+    setSessionCheckKey((key) => key + 1);
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -180,10 +191,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     loadState,
     errorMessage,
+    retrySessionCheck,
     login,
     changePassword,
     logout,
-  }), [user, loadState, errorMessage, login, changePassword, logout]);
+  }), [user, loadState, errorMessage, retrySessionCheck, login, changePassword, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

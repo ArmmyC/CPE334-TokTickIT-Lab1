@@ -242,7 +242,10 @@ function ProtectedRoutes() {
   if (loadState === 'loading') {
     return <p role="status" className="page-status">Checking your session...</p>;
   }
-  if (!user || loadState === 'unauthenticated' || loadState === 'error') {
+  if (loadState === 'error') {
+    return <LoginPage />;
+  }
+  if (!user || loadState === 'unauthenticated') {
     return <Navigate to="/login" replace />;
   }
   if (user.mustChangePassword) {
@@ -268,6 +271,9 @@ function RequesterOnly() {
 function RoleHomePage() {
   const { user } = useAuth();
   if (!user) return null;
+  if (user.role === 'REQUESTER') {
+    return <Navigate to="/tickets" replace />;
+  }
   return (
     <section className="placeholder-page" aria-labelledby="role-home-title">
       <p className="eyebrow">TokTickIT / Workspace</p>

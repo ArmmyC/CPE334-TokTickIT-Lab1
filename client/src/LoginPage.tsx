@@ -12,7 +12,7 @@ function isValidEmail(value: string): boolean {
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { user, loadState, login } = useAuth();
+  const { user, loadState, errorMessage, retrySessionCheck, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -69,6 +69,14 @@ export function LoginPage() {
         <p className="eyebrow">TokTickIT / Secure access</p>
         <h1 id="login-title">Sign in to TokTickIT</h1>
         <p className="text-secondary">Use your TokTickIT account to access the service desk.</p>
+        {loadState === 'error' && (
+          <div role="alert" className="state-message state-message-error">
+            <p>{errorMessage ?? 'Unable to check your session. Try again.'}</p>
+            <button type="button" className="btn btn-secondary" onClick={retrySessionCheck} disabled={isSubmitting}>
+              Retry session check
+            </button>
+          </div>
+        )}
         <form className="auth-form" onSubmit={submit} noValidate aria-busy={isSubmitting}>
           {formAlert && <div role="alert" className="state-message state-message-error">{formAlert}</div>}
           <div className="field-group">

@@ -161,6 +161,18 @@ describe('Lab 3 Login screen', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('requesterId='))).toBe(false);
   });
 
+  it('redirects a Requester away from a direct /home visit', async () => {
+    installAuthFetch({
+      meBody: { user: activeRequester, passwordChangeRequired: false },
+      meStatus: 200,
+    });
+    setPath('/home');
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    expect(await screen.findByRole('heading', { name: 'My Tickets' })).toBeInTheDocument();
+    expect(screen.queryByText(/Administrator workspace/i)).not.toBeInTheDocument();
+  });
+
   it('shows a non-Requester role in the shell without exposing Requester destinations', async () => {
     installAuthFetch({ loginBody: { user: activeStaff, passwordChangeRequired: false } });
     await renderLogin();
@@ -190,6 +202,30 @@ describe('Lab 3 Login screen', () => {
     const logoutCall = fetchMock.mock.calls.find(([url]) => String(url) === '/api/auth/logout');
     expect(logoutCall?.[1]?.headers).toEqual(expect.objectContaining({ 'X-CSRF-Token': 'test-csrf' }));
     expect(screen.queryByRole('heading', { name: 'My Tickets' })).not.toBeInTheDocument();
+  });
+
+  it('shows a safe session error with retry and keeps 401 distinct from unexpected failures', async () => {
+    const fetchMock = installAuthFetch({
+      meStatus: 500,
+      meBody: { error: 'database stack trace', code: 'UNEXPECTED_ERROR' },
+    });
+    await renderLogin();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to check your session. Try again.');
+    expect(screen.queryByText('database stack trace')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry session check' })).toBeInTheDocument();
+
+    fetchMock.mockImplementationOnce((input: RequestInfo | URL) => (
+      String(input) === '/api/auth/me'
+        ? Promise.resolve(jsonResponse({ error: 'Authentication is required.', code: 'AUTHENTICATION_REQUIRED' }, 401))
+        : Promise.resolve(jsonResponse({}))
+    ));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry session check' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
+      expect(screen.queryByText('Unable to check your session. Try again.')).not.toBeInTheDocument();
+    });
   });
 
   it('shows a busy state while login is pending', async () => {
