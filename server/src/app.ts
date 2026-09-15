@@ -6,6 +6,9 @@ import multer, { MulterError } from 'multer';
 import { Prisma } from '@prisma/client';
 import { prisma } from './lib/prisma.js';
 import { localAttachmentStorage, type AttachmentStorage } from './lib/attachment-storage.js';
+import { createSessionMiddleware, enforceSameOrigin, requireNormalAccess } from './auth/middleware.js';
+import { createAuthRouter } from './auth/routes.js';
+import type { AuthDatabase } from './auth/types.js';
 
 export type CategoryRecord = {
   id: number;
@@ -202,7 +205,7 @@ export type TicketApiDatabase = {
 };
 
 export type ApplicationApiDatabase = CategoryApiDatabase &
-  Partial<DevelopmentRequesterApiDatabase & RelatedSystemApiDatabase & TicketApiDatabase>;
+  Partial<DevelopmentRequesterApiDatabase & RelatedSystemApiDatabase & TicketApiDatabase & AuthDatabase>;
 
 type CreateTicketInput = {
   requesterId: number;
@@ -539,6 +542,9 @@ export function createApp(
 
   app.use(cors());
   app.use(express.json());
+  app.use('/api', enforceSameOrigin());
+  app.use('/api', createSessionMiddleware(database));
+  app.use('/api/auth', createAuthRouter(database));
 
   app.get('/api/health', (_request, response) => {
     response.status(200).json({
@@ -546,6 +552,8 @@ export function createApp(
       service: 'TokTickIT API',
     });
   });
+
+  app.use('/api', requireNormalAccess(database));
 
   app.get('/api/categories', async (_request, response) => {
     try {
@@ -1094,12 +1102,16 @@ export function createApp(
     }
   });
 
-  app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
+  app.use((error: unknown, request: express.Request, response: express.Response, _next: express.NextFunction) => {
     if (isRecord(error) && error.type === 'entity.parse.failed') {
-      response.status(400).json({ error: 'Invalid JSON request.' });
+      response.status(400).json(request.path.startsWith('/api/auth')
+        ? { error: 'Invalid JSON request.', code: 'VALIDATION_FAILED' }
+        : { error: 'Invalid JSON request.' });
       return;
     }
-    response.status(500).json({ error: 'Unexpected server failure.' });
+    response.status(500).json(request.path.startsWith('/api/auth')
+      ? { error: 'Unexpected server failure.', code: 'UNEXPECTED_ERROR' }
+      : { error: 'Unexpected server failure.' });
   });
 
   return app;

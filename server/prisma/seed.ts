@@ -1,13 +1,15 @@
 import { PrismaClient } from '@prisma/client';
-import { seedLab2ReferenceData } from '../src/lib/lab-02-seed.js';
+import { repairMigratedUserCredentials } from '../src/lib/lab-03-credentials.js';
+import { seedLab3Data, type Lab3SeedClient } from '../src/lib/lab-03-seed.js';
 
 const prisma = new PrismaClient();
 
 try {
-  await seedLab2ReferenceData(prisma);
-  console.log('Seeded TokTickIT Lab 2 reference data and Development Requesters.');
+  await repairMigratedUserCredentials(prisma);
+  await seedLab3Data(prisma as unknown as Lab3SeedClient);
+  console.log('Seeded TokTickIT Lab 3 reference data, users, Tickets, comments, and notes.');
 } catch (error) {
-  console.error('Unable to seed TokTickIT Lab 2 data.', error);
+  console.error('Unable to seed TokTickIT Lab 3 data.', error);
   process.exitCode = 1;
 } finally {
   await prisma.$disconnect();

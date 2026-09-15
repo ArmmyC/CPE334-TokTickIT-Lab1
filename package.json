@@ -19,6 +19,7 @@
     "db:reset": "npm run prisma:reset --workspace server",
     "db:seed": "npm run prisma:seed --workspace server",
     "test:db:prepare": "node scripts/test-db-prepare.mjs",
+    "test:lab3:migration": "npm run test --workspace server -- tests/lab-03/migration.test.ts",
     "e2e:server": "dotenv -e .env.test -- npm run e2e --workspace server",
     "e2e:client": "npm run dev --workspace client -- --host 127.0.0.1",
     "test:e2e": "npm run db:test:up && npm run test:db:prepare && playwright test"

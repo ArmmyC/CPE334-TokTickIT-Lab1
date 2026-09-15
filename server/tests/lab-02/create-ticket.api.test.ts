@@ -52,7 +52,7 @@ function createSeedHarness() {
 }
 
 describe('Lab 2 reference data seed', () => {
-  it('exposes the required Prisma models, ownership fields, enums, and indexes', () => {
+  it('exposes the Lab 3 identity models while retaining Lab 2 Ticket fields and indexes', () => {
     const modelNames = Prisma.dmmf.datamodel.models.map(({ name }) => name);
     const ticket = Prisma.dmmf.datamodel.models.find(({ name }) => name === 'Ticket');
     const attachment = Prisma.dmmf.datamodel.models.find(({ name }) => name === 'Attachment');
@@ -67,9 +67,12 @@ describe('Lab 2 reference data seed', () => {
     expect(modelNames).toEqual([
       'Category',
       'RelatedSystem',
-      'DevelopmentRequester',
+      'User',
+      'Session',
       'Ticket',
       'Attachment',
+      'PublicComment',
+      'InternalNote',
     ]);
     expect(ticket?.fields.find(({ name }) => name === 'ticketNumber')?.isUnique).toBe(true);
     expect(ticket?.fields.find(({ name }) => name === 'currentStatus')?.default).toBe('NEW');
@@ -80,13 +83,24 @@ describe('Lab 2 reference data seed', () => {
     expect(enumValues).toEqual({
       RequestedPriority: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'],
       TicketPriority: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'],
-      TicketStatus: ['NEW'],
+      TicketStatus: [
+        'NEW',
+        'OPEN',
+        'IN_PROGRESS',
+        'WAITING_FOR_REQUESTER',
+        'RESOLVED',
+        'CLOSED',
+        'REOPENED',
+        'CANCELLED',
+      ],
+      UserRole: ['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'],
     });
     expect(schema).toContain('@@index([requesterId, updatedAt, id])');
     expect(schema).toContain('@@index([categoryId])');
     expect(schema).toContain('@@index([relatedSystemId])');
     expect(schema).toContain('@@index([requestedPriority])');
     expect(schema).toContain('@@index([currentStatus])');
+    expect(schema).toContain('@@index([ownerId, updatedAt, id])');
     expect(schema).toContain('@@index([ticketId, removedAt])');
   });
 

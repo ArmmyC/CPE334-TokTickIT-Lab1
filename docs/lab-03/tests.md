@@ -19,19 +19,19 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 
 | Test ID | Type | Requirement / AC | What it tests | Expected result | Automated test file | Final status |
 | --- | --- | --- | --- | --- | --- | --- |
-| UNIT-01 | Unit | BR-04, BR-05, AC-01 | Password validation and hashing | Valid boundaries pass, invalid rules fail, the fixed `scrypt` parameters are used, hashes differ from plaintext, and verification succeeds | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| UNIT-02 | Unit | BR-08, AC-04 | Session expiry and revocation | The eight-hour inactivity deadline slides on valid activity, the 24-hour absolute deadline never slides, and expired or revoked tokens cannot authenticate | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| UNIT-03 | Unit | BR-09 | CSRF and Origin validation | Missing or mismatched mutation protection fails safely | `server/tests/lab-03/auth.api.test.ts` | Planned |
+| UNIT-01 | Unit | BR-04, BR-05, AC-01 | Password validation and hashing | Valid boundaries pass, invalid rules fail, the fixed `scrypt` parameters are used, hashes differ from plaintext, and verification succeeds | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| UNIT-02 | Unit | BR-08, AC-04 | Session expiry and revocation | The eight-hour inactivity deadline slides on valid activity, the 24-hour absolute deadline never slides, and expired or revoked tokens cannot authenticate | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| UNIT-03 | Unit | BR-09 | CSRF and Origin validation | Missing or mismatched mutation protection fails safely | `server/tests/lab-03/auth.api.test.ts` | Pass |
 | UNIT-04 | Unit | BR-25, AC-15 | Status transition matrix | Only documented transitions are accepted | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
 | UNIT-05 | Unit | BR-37, BR-38, AC-20 | Administrator safety rules | Self-deactivation and last-active-Administrator removal fail | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| UNIT-06 | Unit | BR-45, AC-02 | Login-attempt limiter | After five failed attempts within the window, the next attempt is throttled for 15 minutes, successful login clears the limiter, and no permanent account lock is created | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| MIG-01 | Migration | BR-17, BR-18, AC-03, AC-05 | DevelopmentRequester migration | IDs, Ticket ownership, Attachments, active state, and counts survive conversion. Each migrated Requester can use the documented local initial password, is restricted to password change, and gains normal access only after changing it | `server/tests/lab-03/authorization.api.test.ts` | Planned |
-| SEED-01 | Unit or integration | BR-40, BR-41, BR-42, AC-06 | Idempotent Lab 3 seed | Required active and inactive role counts and workflow records exist without duplicates | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| API-01 | API | FR-01, AC-01 | Valid login | Active credentials establish a safe session and return identity and role | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| API-02 | API | FR-02, BR-02, BR-45, AC-02 | Invalid, inactive, and throttled login | Invalid and inactive failures share the same safe authentication response, repeated failures produce the documented temporary `429`, and successful login clears the limiter | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| API-03 | API | FR-05, AC-03 | Initial password restriction | Restricted session can change password but cannot enter normal APIs | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| API-04 | API | FR-04, AC-04 | Logout | Session is revoked, cookies are cleared, and direct protected access fails | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| API-05 | API | FR-06, BR-07 | Password change | Valid change clears requirement and revokes other sessions, invalid boundaries fail | `server/tests/lab-03/auth.api.test.ts` | Planned |
+| UNIT-06 | Unit | BR-45, AC-02 | Login-attempt limiter | After five failed attempts within the window, the next attempt is throttled for 15 minutes, successful login clears the limiter, and no permanent account lock is created | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| MIG-01 | Migration | BR-17, BR-18, AC-03, AC-05 | DevelopmentRequester migration | IDs, Ticket ownership, Attachments, active state, and counts survive conversion. Each migrated Requester can use the documented local initial password, is restricted to password change, and gains normal access only after changing it | `server/tests/lab-03/migration.test.ts` | Pass |
+| SEED-01 | Unit or integration | BR-40, BR-41, BR-42, AC-06 | Idempotent Lab 3 seed | Required active and inactive role counts and workflow records exist without duplicates | `server/tests/lab-03/seed.test.ts` | Pass |
+| API-01 | API | FR-01, AC-01 | Valid login | Active credentials establish a safe session and return identity and role | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| API-02 | API | FR-02, BR-02, BR-45, AC-02 | Invalid, inactive, and throttled login | Invalid and inactive failures share the same safe authentication response, repeated failures produce the documented temporary `429`, and successful login clears the limiter | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| API-03 | API | FR-05, AC-03 | Initial password restriction | Restricted session can change password but cannot enter normal APIs | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| API-04 | API | FR-04, AC-04 | Logout | Session is revoked, cookies are cleared, and direct protected access fails | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| API-05 | API | FR-06, BR-07 | Password change | Valid change clears requirement and revokes other sessions, invalid boundaries fail | `server/tests/lab-03/auth.api.test.ts` | Pass |
 | API-06 | API | FR-07, BR-12, AC-12 | Role middleware | Requester, Staff, Administrator, unauthenticated, and restricted sessions receive correct status | `server/tests/lab-03/authorization.api.test.ts` | Planned |
 | API-07 | API | FR-09, BR-19, AC-07 | Authenticated ownership | Client requesterId or userId cannot select another identity | `server/tests/lab-03/authorization.api.test.ts` | Planned |
 | API-08 | API | FR-11, AC-08 | Authenticated Ticket creation | Ticket uses session Requester, copies requested priority, and starts NEW | `server/tests/lab-02/create-ticket.api.test.ts` | Planned |
@@ -63,7 +63,7 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 | RESP-03 | Responsive | FR-16, FR-20, AC-22 | Staff Detail and User Management responsive behavior | Operational cards, comments, notes, forms, and actions remain usable | `e2e/lab-03/staff-ticket-flow.spec.ts`, `e2e/lab-03/user-administration.spec.ts` | Planned |
 | SEC-01 | Security | BR-10, AC-01, AC-02, AC-04 | Secret and safe-error audit | No password or session secret leaks and generic failures remain safe | `server/tests/lab-03/auth.api.test.ts`, `server/tests/lab-03/authorization.api.test.ts` | Planned |
 | SEC-02 | Security | BR-12, BR-16, AC-07, AC-12, AC-16 | Direct authorization bypasses | Hidden controls are bypassed through direct API calls and still fail | `server/tests/lab-03/authorization.api.test.ts`, `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| REG-01 | Migration/regression | BR-17, BR-18, AC-05 | Lab 2 data migration | Existing records and ownership survive the migration | `server/tests/lab-03/authorization.api.test.ts` | Planned |
+| REG-01 | Migration/regression | BR-17, BR-18, AC-05 | Lab 2 data migration | Existing records and ownership survive the migration | `server/tests/lab-03/migration.test.ts` | Pass |
 | REG-02 | Migration/regression | FR-11, FR-12, FR-13, AC-08 | Lab 2 Requester regression | Existing Ticket and Attachment behavior passes under authenticated identity | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/my-tickets.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts`, `server/tests/lab-02/attachments.api.test.ts` | Planned |
 | E2E-01 | E2E | AC-01, AC-02, AC-03, AC-04, AC-22, AC-23 | Authentication flow | Valid and invalid login, inactive account, first password change, role display, logout, direct block, and responsive states pass | `e2e/lab-03/authentication.spec.ts` | Planned |
 | E2E-02 | E2E | AC-10, AC-13, AC-14, AC-15, AC-16, AC-22, AC-23 | IT Staff flow | Seeded queue, search, filter, sort, pagination, detail, ownership, priority, status, comments, notes, Attachments, authorization, and responsive states pass | `e2e/lab-03/staff-ticket-flow.spec.ts` | Planned |
@@ -123,12 +123,15 @@ Run from the repository root after copying `.env.test.example` to the uncommitte
 ```text
 npm run db:test:up
 npm run test:db:prepare
+npm run test:lab3:migration
 npm test
 npm run build
 npm run test:e2e
 ```
 
 The `test:db:prepare` guard must parse `DATABASE_URL` and require the database pathname to be exactly `/toktickit_test` before reset, migration, or seed. No test command may use the development database for destructive setup.
+
+`test:lab3:migration` uses the guarded test database but creates a unique temporary PostgreSQL schema. It applies the Lab 1 and Lab 2 migrations, inserts legacy rows, applies the Lab 3 migration, runs credential repair, compares pre-migration and post-migration Ticket and Attachment counts and ownership, then drops only that temporary schema.
 
 The E2E suite uses desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`. The API server and Vite client are started through `playwright.config.ts`, with one worker so seeded records and evidence remain deterministic.
 
