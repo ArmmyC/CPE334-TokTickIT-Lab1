@@ -13,6 +13,7 @@ import { ChangePasswordPage } from './ChangePasswordPage';
 import { CreateTicketPage } from './CreateTicketPage';
 import { LoginPage } from './LoginPage';
 import { MyTicketsPage } from './MyTicketsPage';
+import { StaffTicketQueuePage } from './StaffTicketQueuePage';
 import { TicketDetailPage } from './TicketDetailPage';
 
 type HealthState = 'idle' | 'checking' | 'online' | 'offline';
@@ -175,6 +176,7 @@ function ApplicationShell() {
   if (!user) return null;
 
   const isRequester = user.role === 'REQUESTER';
+  const isStaff = user.role === 'IT_STAFF';
   const roleLabel: Record<AuthUserRole, string> = {
     REQUESTER: 'Requester',
     IT_STAFF: 'IT Staff',
@@ -219,6 +221,9 @@ function ApplicationShell() {
                 <NavLink to="/tickets" className={navLinkClass} onClick={() => setMenuOpen(false)}>My Tickets</NavLink>
                 <NavLink to="/tickets/new" className={navLinkClass} onClick={() => setMenuOpen(false)}>Create Ticket</NavLink>
               </>
+            )}
+            {isStaff && (
+              <NavLink to="/staff/tickets" className={navLinkClass} onClick={() => setMenuOpen(false)}>Ticket Queue</NavLink>
             )}
           </nav>
           <div className="shell-user">
@@ -268,6 +273,20 @@ function RequesterOnly() {
   return <Outlet />;
 }
 
+function StaffOnly() {
+  const { user } = useAuth();
+  if (!user || user.role !== 'IT_STAFF') {
+    return (
+      <section className="placeholder-page" aria-labelledby="staff-access-title">
+        <p className="eyebrow">TokTickIT / Access</p>
+        <h1 id="staff-access-title">IT Staff access is required</h1>
+        <p>This destination is available only to IT Staff accounts.</p>
+      </section>
+    );
+  }
+  return <Outlet />;
+}
+
 function RoleHomePage() {
   const { user } = useAuth();
   if (!user) return null;
@@ -305,6 +324,9 @@ function RoutedApplication() {
           <Route path="/tickets" element={<MyTicketsPage />} />
           <Route path="/tickets/new" element={<CreateTicketPage />} />
           <Route path="/tickets/:ticketId" element={<TicketDetailPage />} />
+        </Route>
+        <Route element={<StaffOnly />}>
+          <Route path="/staff/tickets" element={<StaffTicketQueuePage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

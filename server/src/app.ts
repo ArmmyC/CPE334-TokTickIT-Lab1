@@ -16,6 +16,15 @@ import {
 } from './auth/middleware.js';
 import { createAuthRouter } from './auth/routes.js';
 import type { AuthDatabase } from './auth/types.js';
+import {
+  buildStaffQueueOrderBy,
+  buildStaffQueueWhere,
+  parseStaffQueueQuery,
+  serializeStaffQueueItem,
+  STAFF_QUEUE_SELECT,
+  StaffQueueValidationError,
+  type StaffQueueDatabase,
+} from './tickets/staff-queue.js';
 
 export type CategoryRecord = {
   id: number;
@@ -522,6 +531,89 @@ export function createApp(
   });
 
   app.use('/api', requireNormalAccess(database));
+
+  app.get('/api/staff/tickets', requireRole(database, ['IT_STAFF']), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+
+      const query = parseStaffQueueQuery(request.query);
+      const staffQueueDatabase = database as unknown as StaffQueueDatabase;
+      if (!staffQueueDatabase.ticket?.findMany || !staffQueueDatabase.ticket.count) {
+        throw new Error('Staff Ticket Queue database access is unavailable.');
+      }
+
+      const fieldErrors: Record<string, string> = {};
+      if (query.categoryId !== undefined) {
+        if (!database.category.findUnique) {
+          throw new Error('Category list database access is unavailable.');
+        }
+        const category = await database.category.findUnique({
+          where: { id: query.categoryId },
+          select: { id: true, isActive: true },
+        });
+        if (!category?.isActive) {
+          fieldErrors.categoryId = 'Category does not exist or is inactive.';
+        }
+      }
+
+      if (query.relatedSystemId !== undefined) {
+        if (!database.relatedSystem?.findUnique) {
+          throw new Error('Related System list database access is unavailable.');
+        }
+        const relatedSystem = await database.relatedSystem.findUnique({
+          where: { id: query.relatedSystemId },
+          select: { id: true, isActive: true },
+        });
+        if (!relatedSystem?.isActive) {
+          fieldErrors.relatedSystemId = 'Related System does not exist or is inactive.';
+        }
+      }
+
+      if (Object.keys(fieldErrors).length > 0) {
+        throw new StaffQueueValidationError(fieldErrors);
+      }
+
+      const where = buildStaffQueueWhere(query);
+      const [totalItems, tickets] = await Promise.all([
+        staffQueueDatabase.ticket.count({ where }),
+        staffQueueDatabase.ticket.findMany({
+          where,
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+          orderBy: buildStaffQueueOrderBy(query),
+          select: STAFF_QUEUE_SELECT,
+        }),
+      ]);
+      const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / query.pageSize);
+
+      response.status(200).json({
+        items: tickets.map(serializeStaffQueueItem),
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages,
+        hasNext: query.page < totalPages,
+        hasPrevious: query.page > 1 && totalPages > 0,
+      });
+    } catch (error) {
+      if (error instanceof StaffQueueValidationError) {
+        response.status(400).json({
+          error: 'Please correct the Staff Ticket Queue query.',
+          code: 'VALIDATION_FAILED',
+          fieldErrors: error.fieldErrors,
+        });
+        return;
+      }
+      console.error('TokTickIT Staff Ticket Queue API error:', error);
+      response.status(500).json({
+        error: 'Unable to load Staff Ticket Queue.',
+        code: 'UNEXPECTED_ERROR',
+      });
+    }
+  });
 
   app.get('/api/categories', async (_request, response) => {
     try {
