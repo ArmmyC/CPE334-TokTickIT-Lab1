@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
+import type { Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { Prisma } from '@prisma/client';
 import { prisma } from './lib/prisma.js';
@@ -30,6 +31,14 @@ import {
   STAFF_TICKET_ATTACHMENT_SELECT,
   STAFF_TICKET_COMMUNICATION_SELECT,
   STAFF_TICKET_DETAIL_SELECT,
+  STAFF_TICKET_STATUS_TRANSITIONS,
+  parseStaffOwnerPayload,
+  parseStaffPriorityPayload,
+  parseStaffStatusPayload,
+  StaffTicketOwnerConflictError,
+  StaffTicketTransitionConflictError,
+  StaffTicketValidationError,
+  type StaffTicketDetailRecord,
   type StaffTicketDetailDatabase,
 } from './tickets/staff-detail.js';
 
@@ -509,6 +518,104 @@ function parseAttachmentId(value: unknown): number {
   return attachmentId;
 }
 
+async function loadStaffTicketDetail(
+  database: StaffTicketDetailDatabase,
+  ticketId: number,
+): Promise<StaffTicketDetailRecord | null> {
+  const ticketClient = database.ticket;
+  const attachmentClient = database.attachment;
+  const publicCommentClient = database.publicComment;
+  const internalNoteClient = database.internalNote;
+  if (
+    !ticketClient?.findUnique
+    || !attachmentClient?.findMany
+    || !publicCommentClient?.findMany
+    || !internalNoteClient?.findMany
+  ) {
+    throw new Error('Staff Ticket Detail database access is unavailable.');
+  }
+
+  const ticket = await ticketClient.findUnique({
+    where: { id: ticketId },
+    select: STAFF_TICKET_DETAIL_SELECT,
+  });
+  if (!ticket) {
+    return null;
+  }
+
+  const [attachments, publicComments, internalNotes] = await Promise.all([
+    attachmentClient.findMany({
+      where: { ticketId },
+      orderBy: { uploadedAt: 'asc' },
+      select: STAFF_TICKET_ATTACHMENT_SELECT,
+    }),
+    publicCommentClient.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: 'asc' },
+      select: STAFF_TICKET_COMMUNICATION_SELECT,
+    }),
+    internalNoteClient.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: 'asc' },
+      select: STAFF_TICKET_COMMUNICATION_SELECT,
+    }),
+  ]);
+
+  return {
+    ...ticket,
+    attachments,
+    publicComments,
+    internalNotes,
+  };
+}
+
+function sendStaffTicketNotFound(response: Response): void {
+  response.status(404).json({
+    error: 'Ticket not found.',
+    code: 'TICKET_NOT_FOUND',
+  });
+}
+
+function sendStaffTicketValidationError(response: Response, error: StaffTicketValidationError): void {
+  response.status(400).json({
+    error: 'Please correct the Ticket operation fields.',
+    code: 'VALIDATION_FAILED',
+    fieldErrors: error.fieldErrors,
+  });
+}
+
+function sendStaffTicketOperationFailure(
+  response: Response,
+  error: unknown,
+  message: string,
+): void {
+  if (error instanceof StaffTicketValidationError) {
+    sendStaffTicketValidationError(response, error);
+    return;
+  }
+  if (error instanceof StaffTicketOwnerConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'OWNER_NOT_ELIGIBLE',
+    });
+    return;
+  }
+  if (error instanceof StaffTicketTransitionConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'STATUS_TRANSITION_CONFLICT',
+      currentStatus: error.currentStatus,
+      allowedStatuses: error.allowedStatuses,
+    });
+    return;
+  }
+  console.error(`TokTickIT ${message} API error:`, error);
+  response.status(500).json({
+    error: `Unable to ${message.toLowerCase()}.`,
+    code: 'UNEXPECTED_ERROR',
+  });
+}
+
 export function createApp(
   database: ApplicationApiDatabase = prisma as unknown as ApplicationApiDatabase,
   options: { attachmentStorage?: AttachmentStorage } = {},
@@ -630,15 +737,6 @@ export function createApp(
       }
 
       const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
-      if (
-        !staffDetailDatabase.ticket?.findUnique
-        || !staffDetailDatabase.attachment?.findMany
-        || !staffDetailDatabase.publicComment?.findMany
-        || !staffDetailDatabase.internalNote?.findMany
-      ) {
-        throw new Error('Staff Ticket Detail database access is unavailable.');
-      }
-
       const ticketId = parsePositiveInteger(request.params.ticketId);
       if (ticketId === null) {
         response.status(400).json({
@@ -648,50 +746,136 @@ export function createApp(
         return;
       }
 
-      const ticket = await staffDetailDatabase.ticket.findUnique({
-        where: { id: ticketId },
-        select: STAFF_TICKET_DETAIL_SELECT,
-      });
+      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
       if (!ticket) {
-        response.status(404).json({
-          error: 'Ticket not found.',
-          code: 'TICKET_NOT_FOUND',
-        });
+        sendStaffTicketNotFound(response);
         return;
       }
-
-      const [attachments, publicComments, internalNotes] = await Promise.all([
-        staffDetailDatabase.attachment.findMany({
-          where: { ticketId },
-          orderBy: { uploadedAt: 'asc' },
-          select: STAFF_TICKET_ATTACHMENT_SELECT,
-        }),
-        staffDetailDatabase.publicComment.findMany({
-          where: { ticketId },
-          orderBy: { createdAt: 'asc' },
-          select: STAFF_TICKET_COMMUNICATION_SELECT,
-        }),
-        staffDetailDatabase.internalNote.findMany({
-          where: { ticketId },
-          orderBy: { createdAt: 'asc' },
-          select: STAFF_TICKET_COMMUNICATION_SELECT,
-        }),
-      ]);
-
-      response.status(200).json({
-        ticket: serializeStaffTicketDetail({
-          ...ticket,
-          attachments,
-          publicComments,
-          internalNotes,
-        }),
-      });
+      response.status(200).json({ ticket: serializeStaffTicketDetail(ticket) });
     } catch (error) {
       console.error('TokTickIT Staff Ticket Detail API error:', error);
       response.status(500).json({
         error: 'Unable to load Staff Ticket Detail.',
         code: 'UNEXPECTED_ERROR',
       });
+    }
+  });
+
+  app.patch('/api/staff/tickets/:ticketId/owner', requireRole(database, ['IT_STAFF']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffOwnerPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.ticket?.update || !staffDetailDatabase.user?.findUnique) {
+        throw new Error('Staff Ticket owner database access is unavailable.');
+      }
+      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!ticket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      if (input.ownerId !== null) {
+        const owner = await staffDetailDatabase.user.findUnique({
+          where: { id: input.ownerId },
+          select: { id: true, name: true, email: true, role: true, isActive: true },
+        });
+        if (!owner || !owner.isActive || !['IT_STAFF', 'ADMINISTRATOR'].includes(owner.role)) {
+          throw new StaffTicketOwnerConflictError();
+        }
+      }
+      await staffDetailDatabase.ticket.update({
+        where: { id: ticketId },
+        data: { ownerId: input.ownerId },
+      });
+      const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!updatedTicket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ ticket: serializeStaffTicketDetail(updatedTicket) });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'update Staff Ticket owner');
+    }
+  });
+
+  app.patch('/api/staff/tickets/:ticketId/priority', requireRole(database, ['IT_STAFF', 'ADMINISTRATOR']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffPriorityPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.ticket?.update) {
+        throw new Error('Staff Ticket priority database access is unavailable.');
+      }
+      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!ticket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      await staffDetailDatabase.ticket.update({
+        where: { id: ticketId },
+        data: { itPriority: input.itPriority },
+      });
+      const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!updatedTicket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ ticket: serializeStaffTicketDetail(updatedTicket) });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'update IT Priority');
+    }
+  });
+
+  app.patch('/api/staff/tickets/:ticketId/status', requireRole(database, ['IT_STAFF']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffStatusPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.ticket?.update) {
+        throw new Error('Staff Ticket status database access is unavailable.');
+      }
+      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!ticket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      const allowedStatuses = STAFF_TICKET_STATUS_TRANSITIONS[ticket.currentStatus];
+      if (!allowedStatuses.includes(input.currentStatus)) {
+        throw new StaffTicketTransitionConflictError(ticket.currentStatus, allowedStatuses);
+      }
+      await staffDetailDatabase.ticket.update({
+        where: { id: ticketId },
+        data: { currentStatus: input.currentStatus },
+      });
+      const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!updatedTicket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ ticket: serializeStaffTicketDetail(updatedTicket) });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'update Ticket status');
     }
   });
 

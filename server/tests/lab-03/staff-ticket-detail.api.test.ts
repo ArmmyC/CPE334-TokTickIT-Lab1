@@ -110,6 +110,49 @@ async function createStaffDetailHarness() {
   };
 }
 
+type OperationalStaffRole = 'IT_STAFF' | 'ADMINISTRATOR';
+
+async function createOperationalHarness({ staffRole = 'IT_STAFF' }: { staffRole?: OperationalStaffRole } = {}) {
+  const auth = await createAuthTestHarness(staffRole === 'IT_STAFF' ? [] : [{}, {}, { role: staffRole }]);
+  type MutableDetailTicket = Omit<typeof detailTicket, 'owner'> & {
+    owner: typeof detailTicket.owner | null;
+  };
+  const ticket = structuredClone(detailTicket) as MutableDetailTicket;
+  const ticketFindUnique = vi.fn().mockResolvedValue(ticket);
+  const ticketUpdate = vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+    Object.assign(ticket, data, { updatedAt: new Date('2026-09-08T11:30:00.000Z') });
+    if ('ownerId' in data) {
+      ticket.owner = data.ownerId === null
+        ? null
+        : data.ownerId === 3
+          ? {
+              id: 3,
+              name: 'Somsak Staff',
+              email: 'somsak@example.test',
+              role: 'IT_STAFF',
+            }
+          : null;
+    }
+    return Promise.resolve(ticket);
+  });
+  const database = withAuthDatabase({
+    category: { findMany: vi.fn() },
+    relatedSystem: { findMany: vi.fn() },
+    ticket: { findUnique: ticketFindUnique, update: ticketUpdate },
+    attachment: { findMany: vi.fn().mockResolvedValue(attachments) },
+    publicComment: { findMany: vi.fn().mockResolvedValue(publicComments) },
+    internalNote: { findMany: vi.fn().mockResolvedValue(internalNotes) },
+  }, auth.database);
+
+  return {
+    ...auth,
+    app: createApp(database),
+    ticket,
+    ticketFindUnique,
+    ticketUpdate,
+  };
+}
+
 describe('Lab 3 Staff Ticket Detail API', () => {
   it('returns the documented protected detail with communication, attachments, owner, and resolution data', async () => {
     const harness = await createStaffDetailHarness();
@@ -193,5 +236,135 @@ describe('Lab 3 Staff Ticket Detail API', () => {
       code: 'FORBIDDEN',
     });
     expect(harness.ticketFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('allows IT Staff to claim a Ticket, change IT Priority, and perform a confirmed valid transition', async () => {
+    const harness = await createOperationalHarness();
+    const staff = await harness.login(harness.app, 'somsak@example.test');
+
+    const ownerResponse = await staff.agent
+      .patch('/api/staff/tickets/12/owner')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ ownerId: 3 });
+    expect(ownerResponse.status).toBe(200);
+    expect(harness.ticketUpdate).toHaveBeenCalledWith({
+      where: { id: 12 },
+      data: { ownerId: 3 },
+    });
+
+    const priorityResponse = await staff.agent
+      .patch('/api/staff/tickets/12/priority')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ itPriority: 'URGENT' });
+    expect(priorityResponse.status).toBe(200);
+    expect(harness.ticketUpdate).toHaveBeenCalledWith({
+      where: { id: 12 },
+      data: { itPriority: 'URGENT' },
+    });
+
+    const statusResponse = await staff.agent
+      .patch('/api/staff/tickets/12/status')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ currentStatus: 'RESOLVED', confirmed: true });
+    expect(statusResponse.status).toBe(200);
+    expect(harness.ticketUpdate).toHaveBeenCalledWith({
+      where: { id: 12 },
+      data: { currentStatus: 'RESOLVED' },
+    });
+  });
+
+  it('allows an Administrator to change only IT Priority', async () => {
+    const harness = await createOperationalHarness({ staffRole: 'ADMINISTRATOR' });
+    const admin = await harness.login(harness.app, 'somsak@example.test');
+
+    const priorityResponse = await admin.agent
+      .patch('/api/staff/tickets/12/priority')
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ itPriority: 'LOW' });
+    expect(priorityResponse.status).toBe(200);
+
+    const ownerResponse = await admin.agent
+      .patch('/api/staff/tickets/12/owner')
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ ownerId: 3 });
+    expect(ownerResponse.status).toBe(403);
+
+    const statusResponse = await admin.agent
+      .patch('/api/staff/tickets/12/status')
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ currentStatus: 'RESOLVED', confirmed: true });
+    expect(statusResponse.status).toBe(403);
+  });
+
+  it('rejects ineligible owners and malformed operation payloads without updating the Ticket', async () => {
+    const harness = await createOperationalHarness();
+    const staff = await harness.login(harness.app, 'somsak@example.test');
+
+    const ineligibleOwner = await staff.agent
+      .patch('/api/staff/tickets/12/owner')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ ownerId: 1 });
+    expect(ineligibleOwner.status).toBe(409);
+    expect(ineligibleOwner.body).toEqual({
+      error: 'The selected Ticket owner is not eligible.',
+      code: 'OWNER_NOT_ELIGIBLE',
+    });
+
+    const malformedPriority = await staff.agent
+      .patch('/api/staff/tickets/12/priority')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ itPriority: 'NOT_A_PRIORITY' });
+    expect(malformedPriority.status).toBe(400);
+    expect(malformedPriority.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      fieldErrors: { itPriority: expect.any(String) },
+    });
+
+    const missingConfirmation = await staff.agent
+      .patch('/api/staff/tickets/12/status')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ currentStatus: 'RESOLVED', confirmed: false });
+    expect(missingConfirmation.status).toBe(400);
+    expect(missingConfirmation.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      fieldErrors: { confirmed: expect.any(String) },
+    });
+
+    expect(harness.ticketUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns a transition conflict with allowed statuses and leaves the Ticket unchanged', async () => {
+    const harness = await createOperationalHarness();
+    const staff = await harness.login(harness.app, 'somsak@example.test');
+
+    const response = await staff.agent
+      .patch('/api/staff/tickets/12/status')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ currentStatus: 'CLOSED', confirmed: true });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: 'The requested status transition is not allowed.',
+      code: 'STATUS_TRANSITION_CONFLICT',
+      currentStatus: 'IN_PROGRESS',
+      allowedStatuses: ['WAITING_FOR_REQUESTER', 'RESOLVED', 'CANCELLED'],
+    });
+    expect(harness.ticketUpdate).not.toHaveBeenCalled();
+  });
+
+  it('requires CSRF protection for Staff Ticket mutations', async () => {
+    const harness = await createOperationalHarness();
+    const staff = await harness.login(harness.app, 'somsak@example.test');
+
+    const response = await staff.agent
+      .patch('/api/staff/tickets/12/priority')
+      .send({ itPriority: 'LOW' });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: 'The request could not be verified.',
+      code: 'CSRF_VALIDATION_FAILED',
+    });
+    expect(harness.ticketUpdate).not.toHaveBeenCalled();
   });
 });

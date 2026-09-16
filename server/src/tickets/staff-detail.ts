@@ -73,12 +73,34 @@ export type StaffTicketBaseRecord = {
   };
 };
 
+export type StaffTicketDetailRecord = StaffTicketBaseRecord & {
+  attachments: StaffTicketAttachmentRecord[];
+  publicComments: StaffTicketCommunicationRecord[];
+  internalNotes: StaffTicketCommunicationRecord[];
+};
+
 export type StaffTicketDetailDatabase = {
   ticket?: {
     findUnique(args: {
       where: { id: number };
       select: Record<string, unknown>;
     }): Promise<StaffTicketBaseRecord | null>;
+    update?(args: {
+      where: { id: number };
+      data: Record<string, unknown>;
+    }): Promise<unknown>;
+  };
+  user?: {
+    findUnique(args: {
+      where: { id: number };
+      select: Record<string, unknown>;
+    }): Promise<{
+      id: number;
+      name: string;
+      email: string;
+      role: AuthUserRole;
+      isActive: boolean;
+    } | null>;
   };
   attachment?: {
     findMany(args: {
@@ -158,6 +180,133 @@ const COMMUNICATION_SELECT = {
 export const STAFF_TICKET_ATTACHMENT_SELECT = STAFF_ATTACHMENT_SELECT;
 export const STAFF_TICKET_COMMUNICATION_SELECT = COMMUNICATION_SELECT;
 
+export const STAFF_TICKET_STATUSES: readonly StaffTicketStatus[] = [
+  'NEW',
+  'OPEN',
+  'IN_PROGRESS',
+  'WAITING_FOR_REQUESTER',
+  'RESOLVED',
+  'CLOSED',
+  'REOPENED',
+  'CANCELLED',
+];
+
+export const STAFF_TICKET_PRIORITIES: readonly StaffTicketPriority[] = [
+  'LOW',
+  'MEDIUM',
+  'HIGH',
+  'URGENT',
+];
+
+export const STAFF_TICKET_STATUS_TRANSITIONS: Readonly<Record<StaffTicketStatus, readonly StaffTicketStatus[]>> = {
+  NEW: ['OPEN', 'CANCELLED'],
+  OPEN: ['IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'CANCELLED'],
+  IN_PROGRESS: ['WAITING_FOR_REQUESTER', 'RESOLVED', 'CANCELLED'],
+  WAITING_FOR_REQUESTER: ['IN_PROGRESS', 'RESOLVED', 'CANCELLED'],
+  RESOLVED: ['CLOSED', 'REOPENED'],
+  CLOSED: ['REOPENED'],
+  REOPENED: ['IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'CANCELLED'],
+  CANCELLED: ['REOPENED'],
+};
+
+export class StaffTicketValidationError extends Error {
+  constructor(public readonly fieldErrors: Record<string, string>) {
+    super('Staff Ticket operation validation failed.');
+  }
+}
+
+export class StaffTicketOwnerConflictError extends Error {
+  constructor() {
+    super('The selected Ticket owner is not eligible.');
+  }
+}
+
+export class StaffTicketTransitionConflictError extends Error {
+  constructor(
+    public readonly currentStatus: StaffTicketStatus,
+    public readonly allowedStatuses: readonly StaffTicketStatus[],
+  ) {
+    super('The requested status transition is not allowed.');
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasOnlyFields(payload: Record<string, unknown>, fields: readonly string[], fieldErrors: Record<string, string>): void {
+  const allowed = new Set(fields);
+  for (const key of Object.keys(payload)) {
+    if (!allowed.has(key)) {
+      fieldErrors[key] = 'This field is not accepted.';
+    }
+  }
+}
+
+export function parseStaffOwnerPayload(payload: unknown): { ownerId: number | null } {
+  const fieldErrors: Record<string, string> = {};
+  if (!isRecord(payload)) {
+    throw new StaffTicketValidationError({ form: 'Owner details are required.' });
+  }
+  hasOnlyFields(payload, ['ownerId'], fieldErrors);
+  if (!Object.hasOwn(payload, 'ownerId')) {
+    fieldErrors.ownerId = 'Owner is required, or use null for Unassigned.';
+  } else if (payload.ownerId !== null && (
+    typeof payload.ownerId !== 'number'
+    || !Number.isSafeInteger(payload.ownerId)
+    || payload.ownerId <= 0
+  )) {
+    fieldErrors.ownerId = 'Owner id must be a positive integer or null.';
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new StaffTicketValidationError(fieldErrors);
+  }
+  return { ownerId: payload.ownerId as number | null };
+}
+
+export function parseStaffPriorityPayload(payload: unknown): { itPriority: StaffTicketPriority } {
+  const fieldErrors: Record<string, string> = {};
+  if (!isRecord(payload)) {
+    throw new StaffTicketValidationError({ form: 'IT Priority is required.' });
+  }
+  hasOnlyFields(payload, ['itPriority'], fieldErrors);
+  if (typeof payload.itPriority !== 'string' || !STAFF_TICKET_PRIORITIES.includes(payload.itPriority as StaffTicketPriority)) {
+    fieldErrors.itPriority = 'IT Priority must be LOW, MEDIUM, HIGH, or URGENT.';
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new StaffTicketValidationError(fieldErrors);
+  }
+  return { itPriority: payload.itPriority as StaffTicketPriority };
+}
+
+export function parseStaffStatusPayload(payload: unknown): {
+  currentStatus: StaffTicketStatus;
+  confirmed: boolean;
+} {
+  const fieldErrors: Record<string, string> = {};
+  if (!isRecord(payload)) {
+    throw new StaffTicketValidationError({ form: 'Status details are required.' });
+  }
+  hasOnlyFields(payload, ['currentStatus', 'confirmed'], fieldErrors);
+  if (typeof payload.currentStatus !== 'string' || !STAFF_TICKET_STATUSES.includes(payload.currentStatus as StaffTicketStatus)) {
+    fieldErrors.currentStatus = 'Current Status is not valid.';
+  }
+  if (payload.confirmed !== undefined && typeof payload.confirmed !== 'boolean') {
+    fieldErrors.confirmed = 'Confirmation must be true or false.';
+  }
+  const currentStatus = payload.currentStatus as StaffTicketStatus;
+  if (['RESOLVED', 'CLOSED', 'CANCELLED'].includes(currentStatus) && payload.confirmed !== true) {
+    fieldErrors.confirmed = 'Confirmation is required for this status.';
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new StaffTicketValidationError(fieldErrors);
+  }
+  return {
+    currentStatus,
+    confirmed: payload.confirmed === true,
+  };
+}
+
 function serializeStaffAttachment(attachment: StaffTicketAttachmentRecord) {
   return {
     id: attachment.id,
@@ -182,11 +331,7 @@ function serializeCommunication(communication: StaffTicketCommunicationRecord) {
 }
 
 export function serializeStaffTicketDetail(
-  ticket: StaffTicketBaseRecord & {
-    attachments: StaffTicketAttachmentRecord[];
-    publicComments: StaffTicketCommunicationRecord[];
-    internalNotes: StaffTicketCommunicationRecord[];
-  },
+  ticket: StaffTicketDetailRecord,
 ) {
   return {
     id: ticket.id,
