@@ -6,6 +6,7 @@ import {
   Outlet,
   Route,
   Routes,
+  useParams,
   useNavigate,
 } from 'react-router-dom';
 import { AuthProvider, useAuth, type AuthUserRole } from './auth-context';
@@ -287,6 +288,19 @@ function StaffOnly() {
   return <Outlet />;
 }
 
+function StaffTicketDetailPlaceholder() {
+  const { ticketId } = useParams();
+
+  return (
+    <section className="placeholder-page" aria-labelledby="staff-ticket-detail-title">
+      <p className="eyebrow">TokTickIT / Lab 3</p>
+      <h1 id="staff-ticket-detail-title">Staff Ticket Detail</h1>
+      <p>Ticket {ticketId ?? 'requested'} is ready for the next IT Staff operations increment.</p>
+      <Link className="btn btn-secondary" to="/staff/tickets">Back to Ticket Queue</Link>
+    </section>
+  );
+}
+
 function RoleHomePage() {
   const { user } = useAuth();
   if (!user) return null;
@@ -327,6 +341,7 @@ function RoutedApplication() {
         </Route>
         <Route element={<StaffOnly />}>
           <Route path="/staff/tickets" element={<StaffTicketQueuePage />} />
+          <Route path="/staff/tickets/:ticketId" element={<StaffTicketDetailPlaceholder />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

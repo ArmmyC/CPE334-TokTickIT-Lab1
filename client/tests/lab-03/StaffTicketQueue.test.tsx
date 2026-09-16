@@ -171,6 +171,16 @@ describe('Lab 3 Staff Ticket Queue screen', () => {
     expect(screen.getAllByRole('link', { name: 'View Detail' })[0]).toHaveAttribute('href', '/staff/tickets/12');
   });
 
+  it('keeps IT Staff on the authenticated shell when opening a ticket detail link', async () => {
+    await renderStaffQueue();
+    await screen.findAllByText('TKT-2026-000012');
+
+    fireEvent.click(screen.getAllByRole('link', { name: 'View Detail' })[0]);
+
+    expect(await screen.findByRole('heading', { name: 'Staff Ticket Detail' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in' })).not.toBeInTheDocument();
+  });
+
   it('sends all queue filters and sort choices, resetting the page to one', async () => {
     const fetchMock = await renderStaffQueue();
     await screen.findAllByText('TKT-2026-000012');
