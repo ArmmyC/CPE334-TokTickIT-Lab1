@@ -25,6 +25,13 @@ import {
   StaffQueueValidationError,
   type StaffQueueDatabase,
 } from './tickets/staff-queue.js';
+import {
+  serializeStaffTicketDetail,
+  STAFF_TICKET_ATTACHMENT_SELECT,
+  STAFF_TICKET_COMMUNICATION_SELECT,
+  STAFF_TICKET_DETAIL_SELECT,
+  type StaffTicketDetailDatabase,
+} from './tickets/staff-detail.js';
 
 export type CategoryRecord = {
   id: number;
@@ -610,6 +617,79 @@ export function createApp(
       console.error('TokTickIT Staff Ticket Queue API error:', error);
       response.status(500).json({
         error: 'Unable to load Staff Ticket Queue.',
+        code: 'UNEXPECTED_ERROR',
+      });
+    }
+  });
+
+  app.get('/api/staff/tickets/:ticketId', requireRole(database, ['IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (
+        !staffDetailDatabase.ticket?.findUnique
+        || !staffDetailDatabase.attachment?.findMany
+        || !staffDetailDatabase.publicComment?.findMany
+        || !staffDetailDatabase.internalNote?.findMany
+      ) {
+        throw new Error('Staff Ticket Detail database access is unavailable.');
+      }
+
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        response.status(400).json({
+          error: 'A valid ticketId is required.',
+          code: 'VALIDATION_FAILED',
+        });
+        return;
+      }
+
+      const ticket = await staffDetailDatabase.ticket.findUnique({
+        where: { id: ticketId },
+        select: STAFF_TICKET_DETAIL_SELECT,
+      });
+      if (!ticket) {
+        response.status(404).json({
+          error: 'Ticket not found.',
+          code: 'TICKET_NOT_FOUND',
+        });
+        return;
+      }
+
+      const [attachments, publicComments, internalNotes] = await Promise.all([
+        staffDetailDatabase.attachment.findMany({
+          where: { ticketId },
+          orderBy: { uploadedAt: 'asc' },
+          select: STAFF_TICKET_ATTACHMENT_SELECT,
+        }),
+        staffDetailDatabase.publicComment.findMany({
+          where: { ticketId },
+          orderBy: { createdAt: 'asc' },
+          select: STAFF_TICKET_COMMUNICATION_SELECT,
+        }),
+        staffDetailDatabase.internalNote.findMany({
+          where: { ticketId },
+          orderBy: { createdAt: 'asc' },
+          select: STAFF_TICKET_COMMUNICATION_SELECT,
+        }),
+      ]);
+
+      response.status(200).json({
+        ticket: serializeStaffTicketDetail({
+          ...ticket,
+          attachments,
+          publicComments,
+          internalNotes,
+        }),
+      });
+    } catch (error) {
+      console.error('TokTickIT Staff Ticket Detail API error:', error);
+      response.status(500).json({
+        error: 'Unable to load Staff Ticket Detail.',
         code: 'UNEXPECTED_ERROR',
       });
     }
