@@ -365,7 +365,10 @@ describe('Lab 3 requester authorization', () => {
 
     const foreignDetail = await requester.agent.get('/api/tickets/43?requesterId=2');
     expect(foreignDetail.status).toBe(404);
-    expect(foreignDetail.body).toEqual({ error: 'Ticket not found.' });
+    expect(foreignDetail.body).toEqual({
+      error: 'Ticket not found.',
+      code: 'TICKET_NOT_FOUND',
+    });
   });
 
   it('creates a ticket for the authenticated requester despite a conflicting body requesterId', async () => {

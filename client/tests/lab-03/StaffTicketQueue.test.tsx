@@ -141,6 +141,7 @@ describe('Lab 3 Staff Ticket Queue screen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Staff Ticket Queue' })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(/Loading Tickets/i);
+    await waitFor(() => expect(resolveQueue).toBeDefined());
     resolveQueue?.({ ok: true, status: 200, json: async () => listResponse() });
 
     expect(await screen.findByRole('columnheader', { name: 'Ticket Number' })).toBeInTheDocument();
