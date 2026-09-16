@@ -115,6 +115,9 @@ export type StaffTicketDetailDatabase = {
       orderBy: { createdAt: 'asc' };
       select: Record<string, unknown>;
     }): Promise<StaffTicketCommunicationRecord[]>;
+    create?(args: {
+      data: { ticketId: number; authorId: number; content: string };
+    }): Promise<StaffTicketCommunicationRecord>;
   };
   internalNote?: {
     findMany(args: {
@@ -122,6 +125,9 @@ export type StaffTicketDetailDatabase = {
       orderBy: { createdAt: 'asc' };
       select: Record<string, unknown>;
     }): Promise<StaffTicketCommunicationRecord[]>;
+    create?(args: {
+      data: { ticketId: number; authorId: number; content: string };
+    }): Promise<StaffTicketCommunicationRecord>;
   };
 };
 
@@ -230,6 +236,12 @@ export class StaffTicketTransitionConflictError extends Error {
   }
 }
 
+export class StaffTicketResolutionConflictError extends Error {
+  constructor() {
+    super('The resolution indication has already been recorded.');
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -305,6 +317,22 @@ export function parseStaffStatusPayload(payload: unknown): {
     currentStatus,
     confirmed: payload.confirmed === true,
   };
+}
+
+export function parseStaffCommunicationPayload(payload: unknown): { content: string } {
+  const fieldErrors: Record<string, string> = {};
+  if (!isRecord(payload)) {
+    throw new StaffTicketValidationError({ form: 'Communication content is required.' });
+  }
+  hasOnlyFields(payload, ['content'], fieldErrors);
+  const content = typeof payload.content === 'string' ? payload.content.trim() : '';
+  if (content.length < 1 || content.length > 4000) {
+    fieldErrors.content = 'Content must be between 1 and 4000 characters after trimming.';
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new StaffTicketValidationError(fieldErrors);
+  }
+  return { content };
 }
 
 function serializeStaffAttachment(attachment: StaffTicketAttachmentRecord) {

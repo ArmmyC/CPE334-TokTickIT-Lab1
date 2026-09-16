@@ -43,6 +43,9 @@ const ticketDetail = {
   requestedPriority: 'MEDIUM',
   itPriority: null,
   currentStatus: 'NEW',
+  requesterResolvedAt: null,
+  requesterResolvedBy: null,
+  owner: null,
   createdAt: ticketDate,
   updatedAt: ticketDate,
   requester: { id: 1, name: 'Ariya Anderson', email: 'ariya@example.test' },
@@ -86,6 +89,9 @@ async function createDetailHarness() {
       findMany: attachmentFindMany,
       update: attachmentUpdate,
     },
+    publicComment: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   }, auth.database);
   const app = createApp(database);
 
@@ -115,6 +121,7 @@ describe('Lab 2 Ticket Detail API', () => {
         ticketNumber: 'TKT-2026-000042',
         ticketDate: ticketDate.toISOString(),
         requester: { id: 1, name: 'Ariya Anderson', email: 'ariya@example.test' },
+        owner: null,
         category: { id: 2, name: 'Hardware' },
         relatedSystem: { id: 7, name: 'Corporate Laptop' },
         summary: 'Laptop battery drains quickly',
@@ -122,23 +129,25 @@ describe('Lab 2 Ticket Detail API', () => {
         requestedPriority: 'MEDIUM',
         itPriority: null,
         currentStatus: 'NEW',
+        attachments: [
+          expect.objectContaining({
+            id: 7,
+            originalName: 'evidence.pdf',
+            downloadAvailable: true,
+          }),
+          expect.objectContaining({
+            id: 8,
+            originalName: 'old-screenshot.png',
+            removedAt: removedAt.toISOString(),
+            removalReason: 'Uploaded the wrong document',
+            downloadAvailable: false,
+          }),
+        ],
+        publicComments: [],
+        requesterResolution: null,
         createdAt: ticketDate.toISOString(),
         updatedAt: ticketDate.toISOString(),
       },
-      attachments: [
-        expect.objectContaining({
-          id: 7,
-          originalName: 'evidence.pdf',
-          downloadAvailable: true,
-        }),
-        expect.objectContaining({
-          id: 8,
-          originalName: 'old-screenshot.png',
-          removedAt: removedAt.toISOString(),
-          removalReason: 'Uploaded the wrong document',
-          downloadAvailable: false,
-        }),
-      ],
     });
     expect(JSON.stringify(response.body)).not.toContain('storageKey');
   });
@@ -150,7 +159,7 @@ describe('Lab 2 Ticket Detail API', () => {
     const response = await requester.agent.get('/api/tickets/42?requesterId=1');
 
     expect(response.status).toBe(404);
-    expect(response.body).toEqual({ error: 'Ticket not found.' });
+    expect(response.body).toEqual({ error: 'Ticket not found.', code: 'TICKET_NOT_FOUND' });
   });
 
   it('uses the same safe 404 for a missing Ticket', async () => {
@@ -161,7 +170,7 @@ describe('Lab 2 Ticket Detail API', () => {
     const response = await requester.agent.get('/api/tickets/42');
 
     expect(response.status).toBe(404);
-    expect(response.body).toEqual({ error: 'Ticket not found.' });
+    expect(response.body).toEqual({ error: 'Ticket not found.', code: 'TICKET_NOT_FOUND' });
   });
 
   it('rejects malformed Ticket Detail identifiers with a safe 400', async () => {
