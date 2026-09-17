@@ -21,6 +21,13 @@ export type CreateAdminUserInput = {
   initialPassword: string;
 };
 
+export type UpdateAdminUserInput = {
+  name?: string;
+  email?: string;
+  role?: AdminUserRole;
+  isActive?: boolean;
+};
+
 type AdminUserSearchFilter = {
   contains: string;
   mode: 'insensitive';
@@ -46,6 +53,7 @@ export const ADMIN_USER_SELECT = {
 } as const;
 
 export type AdminUserDatabase = {
+  $transaction?<T>(callback: (database: AdminUserDatabase) => Promise<T>): Promise<T>;
   user: {
     findMany(args: {
       where: AdminUserWhere;
@@ -53,7 +61,8 @@ export type AdminUserDatabase = {
       orderBy: [{ name: 'asc' }, { id: 'asc' }];
     }): Promise<AdminUserResponse[]>;
     findUnique?(args: {
-      where: { email: string };
+      where: { id?: number; email?: string };
+      select?: Record<string, boolean>;
     }): Promise<AuthUserRecord | null>;
     create?(args: {
       data: {
@@ -65,6 +74,13 @@ export type AdminUserDatabase = {
         mustChangePassword: true;
       };
     }): Promise<AuthUserRecord>;
+    update?(args: {
+      where: { id: number };
+      data: UpdateAdminUserInput;
+    }): Promise<AuthUserRecord>;
+    count?(args: {
+      where: { role: AdminUserRole; isActive: true };
+    }): Promise<number>;
   };
 };
 
@@ -83,6 +99,12 @@ export class AdminUserValidationError extends Error {
 export class AdminUserConflictError extends Error {
   constructor(message: string) {
     super(message);
+  }
+}
+
+export class AdminUserNotFoundError extends Error {
+  constructor() {
+    super('User not found.');
   }
 }
 
@@ -210,6 +232,77 @@ export function parseCreateAdminUserPayload(payload: unknown): CreateAdminUserIn
   };
 }
 
+export function parseAdminUserId(value: unknown): number {
+  if (
+    typeof value !== 'string'
+    || !/^\d+$/.test(value)
+    || !Number.isSafeInteger(Number(value))
+    || Number(value) <= 0
+  ) {
+    throw new AdminUserValidationError({ userId: 'A valid positive userId is required.' });
+  }
+  return Number(value);
+}
+
+export function parseUpdateAdminUserPayload(payload: unknown): UpdateAdminUserInput {
+  if (!isRecord(payload)) {
+    throw new AdminUserValidationError({ form: 'User update details are required.' });
+  }
+
+  const fieldErrors: Record<string, string> = {};
+  const allowedFields = new Set(['name', 'email', 'role', 'isActive']);
+  for (const key of Object.keys(payload)) {
+    if (!allowedFields.has(key)) {
+      fieldErrors[key] = 'This field is not accepted.';
+    }
+  }
+
+  const update: UpdateAdminUserInput = {};
+  if (Object.hasOwn(payload, 'name')) {
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    if (name.length < 1 || name.length > 120) {
+      fieldErrors.name = 'Name must be between 1 and 120 characters after trimming.';
+    } else {
+      update.name = name;
+    }
+  }
+
+  if (Object.hasOwn(payload, 'email')) {
+    const email = normalizeEmail(payload.email);
+    if (!email) {
+      fieldErrors.email = 'A valid email address is required.';
+    } else {
+      update.email = email;
+    }
+  }
+
+  if (Object.hasOwn(payload, 'role')) {
+    if (typeof payload.role !== 'string' || !ADMIN_USER_ROLES.has(payload.role as AdminUserRole)) {
+      fieldErrors.role = 'Role must be REQUESTER, IT_STAFF, or ADMINISTRATOR.';
+    } else {
+      update.role = payload.role as AdminUserRole;
+    }
+  }
+
+  if (Object.hasOwn(payload, 'isActive')) {
+    if (typeof payload.isActive !== 'boolean') {
+      fieldErrors.isActive = 'Active state must be a boolean.';
+    } else {
+      update.isActive = payload.isActive;
+    }
+  }
+
+  if (Object.keys(update).length === 0 && Object.keys(fieldErrors).length === 0) {
+    fieldErrors.form = 'At least one User field is required.';
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new AdminUserValidationError(fieldErrors);
+  }
+
+  return update;
+}
+
 export function serializeAdminUser(user: AdminUserResponse): AdminUserResponse {
   return {
     id: user.id,
@@ -262,4 +355,77 @@ export async function createAdminUser(
     },
   });
   return serializeAdminUser(user);
+}
+
+async function updateAdminUserInTransaction(
+  database: AdminUserDatabase,
+  userId: number,
+  input: UpdateAdminUserInput,
+  administratorId: number,
+): Promise<AdminUserResponse> {
+  if (!database.user.findUnique || !database.user.update) {
+    throw new Error('Administrator User database access is unavailable.');
+  }
+
+  const targetUser = await database.user.findUnique({
+    where: { id: userId },
+  });
+  if (!targetUser) {
+    throw new AdminUserNotFoundError();
+  }
+
+  if (input.email !== undefined && input.email !== targetUser.email) {
+    const existingUser = await database.user.findUnique({
+      where: { email: input.email },
+    });
+    if (existingUser && existingUser.id !== userId) {
+      throw new AdminUserConflictError('A User with that email already exists.');
+    }
+  }
+
+  const resultingRole = input.role ?? targetUser.role;
+  const resultingIsActive = input.isActive ?? targetUser.isActive;
+
+  if (targetUser.id === administratorId && !resultingIsActive) {
+    throw new AdminUserConflictError('You cannot deactivate your own account.');
+  }
+
+  if (
+    targetUser.role === 'ADMINISTRATOR'
+    && targetUser.isActive
+    && (resultingRole !== 'ADMINISTRATOR' || !resultingIsActive)
+  ) {
+    if (!database.user.count) {
+      throw new Error('Administrator User database access is unavailable.');
+    }
+    const activeAdministrators = await database.user.count({
+      where: { role: 'ADMINISTRATOR', isActive: true },
+    });
+    if (activeAdministrators <= 1) {
+      throw new AdminUserConflictError('At least one active Administrator must remain.');
+    }
+  }
+
+  const updatedUser = await database.user.update({
+    where: { id: userId },
+    data: input,
+  });
+  return serializeAdminUser(updatedUser);
+}
+
+export async function updateAdminUser(
+  database: AdminUserDatabase,
+  userId: number,
+  input: UpdateAdminUserInput,
+  administratorId: number,
+): Promise<AdminUserResponse> {
+  if (database.$transaction) {
+    return database.$transaction((transaction) => updateAdminUserInTransaction(
+      transaction,
+      userId,
+      input,
+      administratorId,
+    ));
+  }
+  return updateAdminUserInTransaction(database, userId, input, administratorId);
 }

@@ -19,11 +19,15 @@ import { createAuthRouter } from './auth/routes.js';
 import type { AuthDatabase } from './auth/types.js';
 import {
   AdminUserConflictError,
+  AdminUserNotFoundError,
   AdminUserValidationError,
   createAdminUser,
   listAdminUsers,
+  parseAdminUserId,
   parseCreateAdminUserPayload,
   parseAdminUserQuery,
+  parseUpdateAdminUserPayload,
+  updateAdminUser,
   type AdminUserDatabase,
 } from './admin/users.js';
 import {
@@ -660,6 +664,13 @@ function sendAdminUserFailure(response: Response, error: unknown, operation: str
     });
     return;
   }
+  if (error instanceof AdminUserNotFoundError) {
+    response.status(404).json({
+      error: error.message,
+      code: 'USER_NOT_FOUND',
+    });
+    return;
+  }
   console.error(`TokTickIT administrator User ${operation} API error:`, error);
   response.status(500).json({
     error: `Unable to ${operation}.`,
@@ -762,6 +773,31 @@ export function createApp(
         sendAdminUserFailure(response, error, 'create administrator user');
       }
     }
+  );
+
+  app.patch(
+    '/api/admin/users/:userId',
+    requireRole(database, ['ADMINISTRATOR']),
+    requireCsrf(),
+    async (request, response) => {
+      try {
+        if (!request.auth) {
+          sendAuthenticationRequired(response);
+          return;
+        }
+        const userId = parseAdminUserId(request.params.userId);
+        const input = parseUpdateAdminUserPayload(request.body);
+        const adminDatabase = database as unknown as AdminUserDatabase;
+        response.status(200).json(await updateAdminUser(
+          adminDatabase,
+          userId,
+          input,
+          request.auth.user.id,
+        ));
+      } catch (error) {
+        sendAdminUserFailure(response, error, 'update administrator user');
+      }
+    },
   );
 
   app.get('/api/staff/tickets', requireRole(database, ['IT_STAFF']), async (request, response) => {
