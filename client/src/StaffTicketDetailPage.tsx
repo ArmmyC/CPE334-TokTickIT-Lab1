@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiErrorMessage, apiFetch, isApiErrorBody, readJson } from './api';
 import { useAuth } from './auth-context';
@@ -298,6 +298,9 @@ export function StaffTicketDetailPage() {
   const [statusInput, setStatusInput] = useState<TicketStatus>('NEW');
   const [pendingStatus, setPendingStatus] = useState<TicketStatus | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const statusTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const statusCancelRef = useRef<HTMLButtonElement | null>(null);
+  const previousPendingStatusRef = useRef<TicketStatus | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationSuccess, setOperationSuccess] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
@@ -347,6 +350,18 @@ export function StaffTicketDetailPage() {
       cancelled = true;
     };
   }, [retryKey, ticketIdParam, user]);
+
+  useEffect(() => {
+    if (pendingStatus !== null) {
+      previousPendingStatusRef.current = pendingStatus;
+      statusCancelRef.current?.focus();
+      return;
+    }
+    if (previousPendingStatusRef.current !== null) {
+      previousPendingStatusRef.current = null;
+      statusTriggerRef.current?.focus();
+    }
+  }, [pendingStatus]);
 
   const runMutation = async (action: string, callback: () => Promise<void>) => {
     if (busyAction) return;
@@ -577,11 +592,11 @@ export function StaffTicketDetailPage() {
                   />
                   <small id="staff-owner-help">Use an active IT Staff or Administrator User ID, or clear ownership.</small>
                   <div className="action-row">
-                    <button type="button" className="btn btn-primary" onClick={claimTicket} disabled={busyAction !== null}>
+                    <button type="button" className="btn btn-primary" onClick={claimTicket} disabled={busyAction === 'owner'}>
                       {busyAction === 'owner' ? 'Saving Owner...' : 'Claim Ticket'}
                     </button>
-                    <button type="button" className="btn btn-secondary" onClick={assignOwner} disabled={busyAction !== null}>Assign Owner</button>
-                    <button type="button" className="btn btn-secondary" onClick={() => saveOwner(null)} disabled={busyAction !== null}>Unassign Ticket</button>
+                    <button type="button" className="btn btn-secondary" onClick={assignOwner} disabled={busyAction === 'owner'}>Assign Owner</button>
+                    <button type="button" className="btn btn-secondary" onClick={() => saveOwner(null)} disabled={busyAction === 'owner'}>Unassign Ticket</button>
                   </div>
                 </div>
                 <div className="ticket-field staff-editable-field">
@@ -592,7 +607,7 @@ export function StaffTicketDetailPage() {
                   </select>
                   <small>Requested Priority remains unchanged.</small>
                   <div className="action-row">
-                    <button type="button" className="btn btn-primary" onClick={savePriority} disabled={busyAction !== null}>
+                    <button type="button" className="btn btn-primary" onClick={savePriority} disabled={busyAction === 'priority'}>
                       {busyAction === 'priority' ? 'Saving IT Priority...' : 'Save IT Priority'}
                     </button>
                   </div>
@@ -604,7 +619,7 @@ export function StaffTicketDetailPage() {
                   </select>
                   <small>Invalid transitions are checked by the API. Resolved, Closed, and Cancelled require confirmation.</small>
                   <div className="action-row">
-                    <button type="button" className="btn btn-primary" onClick={requestStatusUpdate} disabled={busyAction !== null}>
+                    <button ref={statusTriggerRef} type="button" className="btn btn-primary" onClick={requestStatusUpdate} disabled={busyAction === 'status'}>
                       {busyAction === 'status' ? 'Saving Status...' : 'Update Status'}
                     </button>
                   </div>
@@ -621,7 +636,7 @@ export function StaffTicketDetailPage() {
                   </select>
                   <small>Administrators may change IT Priority only on this protected view.</small>
                   <div className="action-row">
-                    <button type="button" className="btn btn-primary" onClick={savePriority} disabled={busyAction !== null}>
+                    <button type="button" className="btn btn-primary" onClick={savePriority} disabled={busyAction === 'priority'}>
                       {busyAction === 'priority' ? 'Saving IT Priority...' : 'Save IT Priority'}
                     </button>
                   </div>
@@ -634,11 +649,11 @@ export function StaffTicketDetailPage() {
 
           {pendingStatus && (
             <div className="ticket-confirmation-backdrop">
-              <div className="ticket-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="status-confirmation-title">
+              <div className="ticket-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="status-confirmation-title" aria-describedby="status-confirmation-description">
                 <h2 id="status-confirmation-title">Confirm status change</h2>
-                <p>This action will set the Ticket to <strong>{pendingStatus}</strong>. Confirm that this formal workflow change is intended.</p>
+                <p id="status-confirmation-description">This action will set the Ticket to <strong>{pendingStatus}</strong>. Confirm that this formal workflow change is intended.</p>
                 <div className="action-row">
-                  <button type="button" className="btn btn-secondary" onClick={() => setPendingStatus(null)} disabled={busyAction !== null}>Cancel status change</button>
+                  <button ref={statusCancelRef} type="button" className="btn btn-secondary" onClick={() => setPendingStatus(null)} disabled={busyAction === 'status'}>Cancel status change</button>
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -647,7 +662,7 @@ export function StaffTicketDetailPage() {
                       setPendingStatus(null);
                       saveStatus(nextStatus, true);
                     }}
-                    disabled={busyAction !== null}
+                    disabled={busyAction === 'status'}
                   >
                     Confirm status change
                   </button>
@@ -676,7 +691,7 @@ export function StaffTicketDetailPage() {
                 <small id="staff-public-comment-help">This message will be visible to the Requester.</small>
                 {commentError && <p role="alert" className="field-error">{commentError}</p>}
                 <div className="action-row">
-                  <button type="submit" className="btn btn-primary" disabled={busyAction !== null}>
+                  <button type="submit" className="btn btn-primary" disabled={busyAction === 'comment'}>
                     {busyAction === 'comment' ? 'Posting Public Comment...' : 'Post Public Comment'}
                   </button>
                 </div>
@@ -698,7 +713,7 @@ export function StaffTicketDetailPage() {
                 <small id="staff-internal-note-help">Internal only, never visible to Requesters.</small>
                 {noteError && <p role="alert" className="field-error">{noteError}</p>}
                 <div className="action-row">
-                  <button type="submit" className="btn btn-primary" disabled={busyAction !== null}>
+                  <button type="submit" className="btn btn-primary" disabled={busyAction === 'note'}>
                     {busyAction === 'note' ? 'Saving Internal Note...' : 'Save Internal Note'}
                   </button>
                 </div>

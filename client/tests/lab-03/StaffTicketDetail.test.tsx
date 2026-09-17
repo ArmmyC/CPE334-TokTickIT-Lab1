@@ -79,10 +79,12 @@ function stubStaffDetailApi({
   user = staffUser,
   detail = detailResponse,
   detailResponseOverride,
+  ownerUpdateResponse,
 }: {
   user?: typeof staffUser | typeof administratorUser;
   detail?: typeof detailResponse;
   detailResponseOverride?: { ok: boolean; status: number; body: unknown };
+  ownerUpdateResponse?: Promise<ReturnType<typeof jsonResponse>>;
 } = {}) {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -101,6 +103,9 @@ function stubStaffDetailApi({
       return Promise.resolve(jsonResponse(detail));
     }
     if (url === '/api/staff/tickets/12/owner' && method === 'PATCH') {
+      if (ownerUpdateResponse) {
+        return ownerUpdateResponse;
+      }
       return Promise.resolve(jsonResponse(detail));
     }
     if (url === '/api/staff/tickets/12/priority' && method === 'PATCH') {
@@ -247,5 +252,37 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/do not have permission/i);
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('moves focus into the status confirmation dialog and back to its trigger', async () => {
+    await renderStaffDetail();
+
+    const statusTrigger = screen.getByRole('button', { name: 'Update Status' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Current Status' }), { target: { value: 'RESOLVED' } });
+    fireEvent.click(statusTrigger);
+
+    const cancelButton = await screen.findByRole('button', { name: 'Cancel status change' });
+    await waitFor(() => expect(cancelButton).toHaveFocus());
+
+    fireEvent.click(cancelButton);
+    await waitFor(() => expect(statusTrigger).toHaveFocus());
+  });
+
+  it('keeps unrelated actions enabled while one operation is saving', async () => {
+    let resolveOwnerUpdate!: (response: ReturnType<typeof jsonResponse>) => void;
+    const ownerUpdateResponse = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+      resolveOwnerUpdate = resolve;
+    });
+    await renderStaffDetail({ ownerUpdateResponse });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim Ticket' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Saving Owner...' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Save IT Priority' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Update Status' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Post Public Comment' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save Internal Note' })).not.toBeDisabled();
+
+    resolveOwnerUpdate(jsonResponse(detailResponse));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Claim Ticket' })).not.toBeDisabled());
   });
 });
