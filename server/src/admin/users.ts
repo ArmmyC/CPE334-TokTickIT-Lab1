@@ -28,6 +28,12 @@ export type UpdateAdminUserInput = {
   isActive?: boolean;
 };
 
+export type InitialPasswordInput = {
+  initialPassword: string;
+};
+
+type AdminUserCredentialUpdate = Pick<AuthUserRecord, 'passwordHash' | 'mustChangePassword'>;
+
 type AdminUserSearchFilter = {
   contains: string;
   mode: 'insensitive';
@@ -76,11 +82,17 @@ export type AdminUserDatabase = {
     }): Promise<AuthUserRecord>;
     update?(args: {
       where: { id: number };
-      data: UpdateAdminUserInput;
+      data: UpdateAdminUserInput | AdminUserCredentialUpdate;
     }): Promise<AuthUserRecord>;
     count?(args: {
       where: { role: AdminUserRole; isActive: true };
     }): Promise<number>;
+  };
+  session?: {
+    updateMany(args: {
+      where: { userId: number };
+      data: { revokedAt: Date };
+    }): Promise<{ count: number }>;
   };
 };
 
@@ -303,6 +315,34 @@ export function parseUpdateAdminUserPayload(payload: unknown): UpdateAdminUserIn
   return update;
 }
 
+export function parseInitialPasswordPayload(payload: unknown): InitialPasswordInput {
+  if (!isRecord(payload)) {
+    throw new AdminUserValidationError({ form: 'Initial password details are required.' });
+  }
+
+  const fieldErrors: Record<string, string> = {};
+  for (const key of Object.keys(payload)) {
+    if (key !== 'initialPassword') {
+      fieldErrors[key] = 'This field is not accepted.';
+    }
+  }
+
+  if (typeof payload.initialPassword !== 'string' || payload.initialPassword.length === 0) {
+    fieldErrors.initialPassword = 'Initial password is required.';
+  } else {
+    const passwordError = validatePassword(payload.initialPassword);
+    if (passwordError) {
+      fieldErrors.initialPassword = passwordError;
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new AdminUserValidationError(fieldErrors);
+  }
+
+  return { initialPassword: payload.initialPassword as string };
+}
+
 export function serializeAdminUser(user: AdminUserResponse): AdminUserResponse {
   return {
     id: user.id,
@@ -428,4 +468,50 @@ export async function updateAdminUser(
     ));
   }
   return updateAdminUserInTransaction(database, userId, input, administratorId);
+}
+
+async function resetAdminUserPasswordInTransaction(
+  database: AdminUserDatabase,
+  userId: number,
+  input: InitialPasswordInput,
+): Promise<AdminUserResponse> {
+  if (!database.user.findUnique || !database.user.update || !database.session?.updateMany) {
+    throw new Error('Administrator User credential database access is unavailable.');
+  }
+
+  const targetUser = await database.user.findUnique({
+    where: { id: userId },
+  });
+  if (!targetUser) {
+    throw new AdminUserNotFoundError();
+  }
+
+  const passwordHash = await hashPassword(input.initialPassword);
+  const updatedUser = await database.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash,
+      mustChangePassword: true,
+    },
+  });
+  await database.session.updateMany({
+    where: { userId },
+    data: { revokedAt: new Date() },
+  });
+  return serializeAdminUser(updatedUser);
+}
+
+export async function resetAdminUserPassword(
+  database: AdminUserDatabase,
+  userId: number,
+  input: InitialPasswordInput,
+): Promise<AdminUserResponse> {
+  if (database.$transaction) {
+    return database.$transaction((transaction) => resetAdminUserPasswordInTransaction(
+      transaction,
+      userId,
+      input,
+    ));
+  }
+  return resetAdminUserPasswordInTransaction(database, userId, input);
 }

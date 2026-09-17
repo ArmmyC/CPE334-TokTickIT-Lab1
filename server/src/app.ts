@@ -25,8 +25,10 @@ import {
   listAdminUsers,
   parseAdminUserId,
   parseCreateAdminUserPayload,
+  parseInitialPasswordPayload,
   parseAdminUserQuery,
   parseUpdateAdminUserPayload,
+  resetAdminUserPassword,
   updateAdminUser,
   type AdminUserDatabase,
 } from './admin/users.js';
@@ -796,6 +798,22 @@ export function createApp(
         ));
       } catch (error) {
         sendAdminUserFailure(response, error, 'update administrator user');
+      }
+    },
+  );
+
+  app.post(
+    '/api/admin/users/:userId/initial-password',
+    requireRole(database, ['ADMINISTRATOR']),
+    requireCsrf(),
+    async (request, response) => {
+      try {
+        const userId = parseAdminUserId(request.params.userId);
+        const input = parseInitialPasswordPayload(request.body);
+        const adminDatabase = database as unknown as AdminUserDatabase;
+        response.status(200).json(await resetAdminUserPassword(adminDatabase, userId, input));
+      } catch (error) {
+        sendAdminUserFailure(response, error, 'set administrator initial password');
       }
     },
   );
