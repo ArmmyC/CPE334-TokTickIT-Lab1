@@ -10,6 +10,8 @@ const administratorUser = {
   role: 'ADMINISTRATOR',
   isActive: true,
   mustChangePassword: false,
+  createdAt: '2026-09-17T00:00:00.000Z',
+  updatedAt: '2026-09-17T00:00:00.000Z',
 };
 
 const requesterUser = {
@@ -19,6 +21,8 @@ const requesterUser = {
   role: 'REQUESTER',
   isActive: true,
   mustChangePassword: false,
+  createdAt: '2026-09-17T00:00:00.000Z',
+  updatedAt: '2026-09-17T00:00:00.000Z',
 };
 
 const staffUser = {
@@ -28,6 +32,8 @@ const staffUser = {
   role: 'IT_STAFF',
   isActive: true,
   mustChangePassword: false,
+  createdAt: '2026-09-17T00:00:00.000Z',
+  updatedAt: '2026-09-17T00:00:00.000Z',
 };
 
 const users = [
@@ -128,7 +134,7 @@ describe('Lab 3 Administrator User Management screen', () => {
     });
 
     expect(await screen.findByRole('heading', { name: 'User Management' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Loading Users...');
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading Users...');
     await waitFor(() => expect(resolveList).toBeDefined());
     resolveList?.(jsonResponse(users));
 
@@ -199,7 +205,11 @@ describe('Lab 3 Administrator User Management screen', () => {
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    if (status === 401) {
+      expect(screen.getByRole('link', { name: 'Sign in again' })).toBeInTheDocument();
+    } else {
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    }
     expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/admin/users'))).toBe(true);
   });
 });
