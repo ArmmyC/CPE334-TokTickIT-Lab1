@@ -1,7 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { App } from '../../src/App';
+
+const stylesheet = readFileSync(path.resolve(process.cwd(), 'src/main.css'), 'utf8');
 
 const administratorUser = {
   id: 1,
@@ -468,5 +472,39 @@ describe('Lab 3 Administrator User Management initial-password mode', () => {
       await Promise.resolve();
     });
     expect(mutationCalls(fetchMock)).toHaveLength(2);
+  });
+});
+
+describe('Lab 3 Administrator User Management responsive and accessibility contract', () => {
+  it('defines Zen Green page, table, card, and small-screen selectors', () => {
+    expect(stylesheet).toMatch(/\.admin-users-page\s*\{/);
+    expect(stylesheet).toMatch(/\.admin-users-table-view\s*\{/);
+    expect(stylesheet).toMatch(/\.admin-users-card-view\s*\{/);
+    expect(stylesheet).toContain('@media (max-width: 991px)');
+    expect(stylesheet).toContain('content: attr(data-label)');
+    expect(stylesheet).toContain('overflow-wrap: anywhere');
+    expect(stylesheet).toContain('var(--zen-primary)');
+  });
+
+  it('keeps row fields and the Edit action available in the accessible list structure', async () => {
+    await renderUserManagement();
+
+    expect(await screen.findByRole('heading', { name: 'User Management' })).toBeVisible();
+    const table = await screen.findByRole('table');
+    expect(table.querySelector('[data-label="Name"]')).not.toBeNull();
+    expect(table.querySelector('[data-label="Email"]')).not.toBeNull();
+    expect(table.querySelector('[data-label="Role"]')).not.toBeNull();
+    expect(table.querySelector('[data-label="Status"]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Edit Admin User' })).toBeVisible();
+  });
+
+  it('connects form feedback to labelled controls', async () => {
+    await openCreateUserForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Create User' }));
+
+    expect(screen.getByLabelText('Name')).toHaveAttribute('aria-describedby', 'admin-user-name-error');
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-describedby', 'admin-user-email-error');
+    expect(screen.getByLabelText('Initial Password')).toHaveAttribute('aria-describedby', 'admin-user-initial-password-error admin-user-password-rules');
+    expect(screen.getByText('Name is required.')).toHaveAttribute('id', 'admin-user-name-error');
   });
 });

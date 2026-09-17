@@ -87,6 +87,29 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .attachment-errors ul { margin-bottom: 0; }
 .state-message-success { color: var(--zen-primary); border: 1px solid #9bc8aa; background: var(--zen-pale); }
 .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-top: 1.5rem; }
+.admin-users-page { padding: clamp(1.25rem, 3vw, 2.5rem); border: 1px solid #d6e4dc; border-radius: 1rem; background: #fff; box-shadow: 0 .75rem 2rem rgb(23 53 42 / 6%); }
+.admin-users-page .page-heading-row h1 { margin-bottom: .5rem; color: var(--zen-primary); }
+.admin-users-filter-panel { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid #d6e4dc; border-radius: .75rem; background: var(--zen-pale); }
+.admin-users-filter-grid { display: grid; grid-template-columns: minmax(16rem, 2fr) minmax(12rem, 1fr); gap: 1rem; }
+.admin-users-filter-actions { justify-content: flex-end; margin-top: 1rem; }
+.admin-users-table-view { max-width: 100%; overflow-x: auto; border: 1px solid #d6e4dc; border-radius: .75rem; }
+.admin-users-table { width: 100%; margin: 0; border-collapse: collapse; background: #fff; }
+.admin-users-table th, .admin-users-table td { padding: .85rem .75rem; border-bottom: 1px solid #e4eee8; text-align: left; vertical-align: middle; }
+.admin-users-table th { background: #f1f8f3; color: var(--zen-primary); font-size: .84rem; letter-spacing: .02em; }
+.admin-users-table td { overflow-wrap: anywhere; }
+.admin-users-table tbody tr:last-child td { border-bottom: 0; }
+.admin-users-table td:last-child { white-space: nowrap; }
+.admin-users-card-view { display: block; }
+.admin-user-role-badge { background: var(--zen-pale); border-color: #b9d6c5; color: var(--zen-primary); }
+.user-status-badge { display: inline-flex; align-items: center; gap: .35rem; border-radius: 999px; padding: .25rem .55rem; font-size: .78rem; font-weight: 800; white-space: nowrap; }
+.user-status-active { background: var(--zen-pale); color: var(--zen-primary); }
+.user-status-inactive { background: #eef2f0; color: #496658; }
+.admin-user-form { margin-top: 1.5rem; }
+.admin-user-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 1.5rem; }
+.admin-user-password-section { margin-top: 1.5rem; padding: 1.25rem; border: 1px solid #b9d6c5; border-radius: .75rem; background: #fbfefc; }
+.admin-user-password-section h2 { margin-bottom: .65rem; color: var(--zen-primary); font-size: 1.15rem; }
+.admin-user-password-form { margin-top: 1rem; }
+.admin-user-password-rules { margin-top: 1rem; }
 .my-tickets-page { padding: clamp(1.25rem, 3vw, 2.5rem); border: 1px solid #d6e4dc; border-radius: 1rem; background: #fff; box-shadow: 0 .75rem 2rem rgb(23 53 42 / 6%); }
 .my-tickets-page .page-heading-row h1 { margin-bottom: .5rem; color: var(--zen-primary); }
 .tickets-filter-panel { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid #d6e4dc; border-radius: .75rem; background: var(--zen-pale); }
@@ -201,6 +224,16 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .ticket-detail-header-card { display: grid; }
   .ticket-detail-header-fields { min-width: 0; }
   .staff-operation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-users-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-users-table-view { overflow-x: visible; border: 0; }
+  .admin-users-table, .admin-users-table tbody { display: block; }
+  .admin-users-table thead { display: none; }
+  .admin-users-table tbody { display: grid; gap: .85rem; }
+  .admin-users-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem 1rem; padding: 1rem; border: 1px solid #d6e4dc; border-radius: .75rem; background: #fff; box-shadow: 0 .35rem 1rem rgb(23 53 42 / 5%); }
+  .admin-users-table td { display: grid; grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr); gap: .5rem; min-width: 0; padding: 0; border: 0; }
+  .admin-users-table td::before { content: attr(data-label); color: #496658; font-size: .78rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .admin-users-table td:last-child { display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; }
+  .admin-users-table td:last-child .btn { margin-left: auto; }
 }
 
 @media (max-width: 767px) {
@@ -241,4 +274,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .attachment-actions .btn { flex: 1 1 auto; }
   .staff-operation-grid { grid-template-columns: 1fr; }
   .communication-entry-meta { display: grid; gap: .2rem; }
+  .admin-users-page { padding: 1rem; }
+  .admin-users-filter-grid, .admin-user-form-grid { grid-template-columns: 1fr; }
+  .admin-users-filter-actions { justify-content: stretch; }
+  .admin-users-filter-actions .btn { width: 100%; }
+  .admin-users-table tr { grid-template-columns: 1fr; }
+  .admin-users-table td:last-child { grid-column: auto; }
+  .admin-user-password-section { padding: 1rem; }
 }
