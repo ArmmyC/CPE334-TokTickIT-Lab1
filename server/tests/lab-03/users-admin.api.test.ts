@@ -17,7 +17,12 @@ async function createAdminUsersHarness() {
   const create = vi.fn();
   const update = vi.fn();
   const count = vi.fn();
+  const originalSessionUpdateMany = auth.database.session.updateMany;
+  const updateMany = vi.fn((args: Parameters<typeof originalSessionUpdateMany>[0]) => (
+    originalSessionUpdateMany(args)
+  ));
   Object.assign(auth.database.user, { findMany, create, update, count });
+  Object.assign(auth.database.session, { updateMany });
 
   const database = withAuthDatabase({
     category: {
@@ -32,6 +37,7 @@ async function createAdminUsersHarness() {
     create,
     update,
     count,
+    updateMany,
   };
 }
 
@@ -324,7 +330,10 @@ function enableUserUpdateMock(harness: Awaited<ReturnType<typeof createAdminUser
     data,
   }: {
     where: { id: number };
-    data: Partial<Pick<AuthUserRecord, 'name' | 'email' | 'role' | 'isActive'>>;
+    data: Partial<Pick<
+      AuthUserRecord,
+      'name' | 'email' | 'role' | 'isActive' | 'passwordHash' | 'mustChangePassword'
+    >>;
   }) => {
     const user = harness.users.get(where.id);
     if (!user) {
@@ -534,5 +543,152 @@ describe('Lab 3 Administrator User Management edit API', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.isActive).toBe(false);
+  });
+});
+
+describe('Lab 3 Administrator User Management initial-password API', () => {
+  it('sets a new hashed initial password, forces the next change, and revokes every target session', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+    const targetSessionOne = await harness.login(harness.app, 'mali@example.test');
+    const targetSessionTwo = await harness.login(harness.app, 'mali@example.test');
+    const target = harness.users.get(2)!;
+    const previousHash = target.passwordHash;
+    const newPassword = 'New-initial-password1!';
+
+    const response = await administrator.agent
+      .post('/api/admin/users/2/initial-password')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ initialPassword: newPassword });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(safeUser(target));
+    expect(response.body).not.toHaveProperty('passwordHash');
+    expect(JSON.stringify(response.body)).not.toContain(newPassword);
+    expect(target.passwordHash).not.toBe(previousHash);
+    expect(target.passwordHash).not.toBe(newPassword);
+    expect(target.mustChangePassword).toBe(true);
+    expect(harness.update).toHaveBeenCalledWith({
+      where: { id: 2 },
+      data: {
+        passwordHash: expect.any(String),
+        mustChangePassword: true,
+      },
+    });
+    expect(harness.updateMany).toHaveBeenCalledWith({
+      where: { userId: 2 },
+      data: { revokedAt: expect.any(Date) },
+    });
+    const targetSessions = [...harness.sessions.values()].filter((session) => session.userId === 2);
+    expect(targetSessions).toHaveLength(2);
+    expect(targetSessions.every((session) => session.revokedAt instanceof Date)).toBe(true);
+    const administratorSession = [...harness.sessions.values()].find((session) => session.userId === 1);
+    expect(administratorSession?.revokedAt).toBeNull();
+    expect(targetSessionOne.agent).toBeDefined();
+    expect(targetSessionTwo.agent).toBeDefined();
+  });
+
+  it.each([
+    ['malformed id', 'not-a-number', { initialPassword: 'New-initial-password1!' }, 'userId'],
+    ['non-positive id', '0', { initialPassword: 'New-initial-password1!' }, 'userId'],
+    ['missing password', '2', {}, 'initialPassword'],
+    ['invalid password', '2', { initialPassword: 'weak' }, 'initialPassword'],
+  ])('rejects %s without changing User credentials or sessions', async (_caseName, userId, payload, field) => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+    await harness.login(harness.app, 'mali@example.test');
+    const target = harness.users.get(2)!;
+    const previousHash = target.passwordHash;
+    const previousMustChangePassword = target.mustChangePassword;
+    const previousSessions = [...harness.sessions.values()]
+      .filter((session) => session.userId === 2)
+      .map((session) => ({ id: session.id, revokedAt: session.revokedAt }));
+
+    const response = await administrator.agent
+      .post(`/api/admin/users/${userId}/initial-password`)
+      .set('x-csrf-token', administrator.csrfToken)
+      .send(payload);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      fieldErrors: { [field]: expect.any(String) },
+    });
+    expect(harness.update).not.toHaveBeenCalled();
+    expect(harness.updateMany).not.toHaveBeenCalled();
+    expect(target.passwordHash).toBe(previousHash);
+    expect(target.mustChangePassword).toBe(previousMustChangePassword);
+    expect([...harness.sessions.values()]
+      .filter((session) => session.userId === 2)
+      .map((session) => ({ id: session.id, revokedAt: session.revokedAt })))
+      .toEqual(previousSessions);
+  });
+
+  it('returns a safe not-found response for a missing target User', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .post('/api/admin/users/999/initial-password')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ initialPassword: 'New-initial-password1!' });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      error: 'User not found.',
+      code: 'USER_NOT_FOUND',
+    });
+    expect(harness.update).not.toHaveBeenCalled();
+    expect(harness.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('requires CSRF and Administrator authorization for initial-password changes', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+
+    const csrfFailure = await administrator.agent
+      .post('/api/admin/users/2/initial-password')
+      .send({ initialPassword: 'New-initial-password1!' });
+    expect(csrfFailure.status).toBe(403);
+    expect(csrfFailure.body.code).toBe('CSRF_VALIDATION_FAILED');
+
+    const requester = await harness.login(harness.app, 'mali@example.test');
+    const forbidden = await requester.agent
+      .post('/api/admin/users/2/initial-password')
+      .set('x-csrf-token', requester.csrfToken)
+      .send({ initialPassword: 'New-initial-password1!' });
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.body.code).toBe('FORBIDDEN');
+
+    const unauthenticated = await request(harness.app)
+      .post('/api/admin/users/2/initial-password')
+      .send({ initialPassword: 'New-initial-password1!' });
+    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.body.code).toBe('AUTHENTICATION_REQUIRED');
+    expect(harness.update).not.toHaveBeenCalled();
+    expect(harness.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns a safe 500 response when the credential update fails unexpectedly', async () => {
+    const harness = await createAdminUsersHarness();
+    harness.update.mockRejectedValue(new Error('database unavailable'));
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .post('/api/admin/users/2/initial-password')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ initialPassword: 'New-initial-password1!' });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      error: 'Unable to set administrator initial password.',
+      code: 'UNEXPECTED_ERROR',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('database unavailable');
+    expect(harness.updateMany).not.toHaveBeenCalled();
   });
 });
