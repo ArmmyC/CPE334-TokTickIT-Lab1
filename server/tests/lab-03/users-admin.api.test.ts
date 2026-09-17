@@ -15,7 +15,9 @@ async function createAdminUsersHarness() {
   ]);
   const findMany = vi.fn();
   const create = vi.fn();
-  Object.assign(auth.database.user, { findMany, create });
+  const update = vi.fn();
+  const count = vi.fn();
+  Object.assign(auth.database.user, { findMany, create, update, count });
 
   const database = withAuthDatabase({
     category: {
@@ -28,6 +30,8 @@ async function createAdminUsersHarness() {
     app: createApp(database),
     findMany,
     create,
+    update,
+    count,
   };
 }
 
@@ -311,5 +315,224 @@ describe('Lab 3 Administrator User Management creation API', () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Invalid JSON request.');
     expect(harness.create).not.toHaveBeenCalled();
+  });
+});
+
+function enableUserUpdateMock(harness: Awaited<ReturnType<typeof createAdminUsersHarness>>) {
+  harness.update.mockImplementation(async ({
+    where,
+    data,
+  }: {
+    where: { id: number };
+    data: Partial<Pick<AuthUserRecord, 'name' | 'email' | 'role' | 'isActive'>>;
+  }) => {
+    const user = harness.users.get(where.id);
+    if (!user) {
+      throw new Error('user not found');
+    }
+    Object.assign(user, data, { updatedAt: new Date('2026-09-17T02:00:00.000Z') });
+    return structuredClone(user);
+  });
+}
+
+function addSecondActiveAdministrator(harness: Awaited<ReturnType<typeof createAdminUsersHarness>>) {
+  const administrator = harness.users.get(1)!;
+  harness.users.set(4, {
+    ...structuredClone(administrator),
+    id: 4,
+    name: 'Narin Administrator',
+    email: 'narin@example.test',
+    role: 'ADMINISTRATOR',
+  });
+}
+
+describe('Lab 3 Administrator User Management edit API', () => {
+  it('edits the permitted profile fields and returns the safe updated User', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    harness.count.mockResolvedValue(1);
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .patch('/api/admin/users/2')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({
+        name: '  Mali Updated  ',
+        email: '  MALI.UPDATED@EXAMPLE.TEST ',
+        role: 'IT_STAFF',
+        isActive: false,
+      });
+
+    const expectedUser = harness.users.get(2)!;
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(safeUser(expectedUser));
+    expect(harness.update).toHaveBeenCalledWith({
+      where: { id: 2 },
+      data: {
+        name: 'Mali Updated',
+        email: 'mali.updated@example.test',
+        role: 'IT_STAFF',
+        isActive: false,
+      },
+    });
+  });
+
+  it('accepts a partial edit without changing password state or Ticket history', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .patch('/api/admin/users/2')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ name: 'Mali Renamed' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.name).toBe('Mali Renamed');
+    expect(response.body.email).toBe('mali@example.test');
+    expect(response.body.mustChangePassword).toBe(false);
+    expect(harness.update).toHaveBeenCalledWith({
+      where: { id: 2 },
+      data: { name: 'Mali Renamed' },
+    });
+  });
+
+  it.each([
+    ['malformed id', 'not-a-number', { name: 'Updated' }, 'userId'],
+    ['non-positive id', '0', { name: 'Updated' }, 'userId'],
+    ['invalid role', '2', { role: 'SUPPORT' }, 'role'],
+    ['invalid activation state', '2', { isActive: 'yes' }, 'isActive'],
+    ['unknown field', '2', { passwordHash: 'client-controlled' }, 'passwordHash'],
+    ['empty patch', '2', {}, 'form'],
+  ])('rejects %s before updating a User', async (_caseName, userId, payload, field) => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .patch(`/api/admin/users/${userId}`)
+      .set('x-csrf-token', administrator.csrfToken)
+      .send(payload);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      fieldErrors: { [field]: expect.any(String) },
+    });
+    expect(harness.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate normalized email and a missing target safely', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+
+    const duplicate = await administrator.agent
+      .patch('/api/admin/users/2')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ email: '  ARIYA@EXAMPLE.TEST ' });
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body.code).toBe('CONFLICT');
+    expect(harness.update).not.toHaveBeenCalled();
+
+    const missing = await administrator.agent
+      .patch('/api/admin/users/999')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ name: 'Missing User' });
+    expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({
+      error: 'User not found.',
+      code: 'USER_NOT_FOUND',
+    });
+    expect(harness.update).not.toHaveBeenCalled();
+  });
+
+  it('requires CSRF protection for User edits', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .patch('/api/admin/users/2')
+      .send({ name: 'Updated' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('CSRF_VALIDATION_FAILED');
+    expect(harness.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects Administrator self-deactivation', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    harness.count.mockResolvedValue(1);
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .patch('/api/admin/users/1')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ isActive: false });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('CONFLICT');
+    expect(harness.update).not.toHaveBeenCalled();
+  });
+
+  it('does not allow deactivation or role removal for the last active Administrator', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    harness.count.mockResolvedValue(1);
+    const administrator = await harness.login(harness.app);
+
+    const deactivation = await administrator.agent
+      .patch('/api/admin/users/1')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ isActive: false });
+    expect(deactivation.status).toBe(409);
+    expect(deactivation.body.code).toBe('CONFLICT');
+
+    const roleChange = await administrator.agent
+      .patch('/api/admin/users/1')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ role: 'IT_STAFF' });
+    expect(roleChange.status).toBe(409);
+    expect(roleChange.body.code).toBe('CONFLICT');
+    expect(harness.update).not.toHaveBeenCalled();
+  });
+
+  it('allows changes to a non-last Administrator and does not falsely conflict for a safe active edit', async () => {
+    const harness = await createAdminUsersHarness();
+    addSecondActiveAdministrator(harness);
+    enableUserUpdateMock(harness);
+    harness.count.mockResolvedValue(2);
+    const administrator = await harness.login(harness.app);
+
+    const roleChange = await administrator.agent
+      .patch('/api/admin/users/4')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ role: 'IT_STAFF' });
+    expect(roleChange.status).toBe(200);
+    expect(roleChange.body.role).toBe('IT_STAFF');
+
+    const activeEdit = await administrator.agent
+      .patch('/api/admin/users/1')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ name: 'Administrator Renamed' });
+    expect(activeEdit.status).toBe(200);
+    expect(activeEdit.body.name).toBe('Administrator Renamed');
+    expect(harness.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows deactivation of a non-Administrator User', async () => {
+    const harness = await createAdminUsersHarness();
+    enableUserUpdateMock(harness);
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .patch('/api/admin/users/2')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({ isActive: false });
+
+    expect(response.status).toBe(200);
+    expect(response.body.isActive).toBe(false);
   });
 });
