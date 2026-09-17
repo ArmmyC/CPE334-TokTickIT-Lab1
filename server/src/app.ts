@@ -18,8 +18,11 @@ import {
 import { createAuthRouter } from './auth/routes.js';
 import type { AuthDatabase } from './auth/types.js';
 import {
+  AdminUserConflictError,
   AdminUserValidationError,
+  createAdminUser,
   listAdminUsers,
+  parseCreateAdminUserPayload,
   parseAdminUserQuery,
   type AdminUserDatabase,
 } from './admin/users.js';
@@ -635,6 +638,35 @@ function sendStaffTicketValidationError(response: Response, error: StaffTicketVa
   });
 }
 
+function sendAdminUserValidationError(response: Response, error: AdminUserValidationError): void {
+  response.status(400).json({
+    error: 'Please correct the Administrator User fields.',
+    code: 'VALIDATION_FAILED',
+    fieldErrors: error.fieldErrors,
+  });
+}
+
+function sendAdminUserFailure(response: Response, error: unknown, operation: string): void {
+  if (error instanceof AdminUserValidationError) {
+    sendAdminUserValidationError(response, error);
+    return;
+  }
+  if (error instanceof AdminUserConflictError || isUniqueConflict(error)) {
+    response.status(409).json({
+      error: error instanceof AdminUserConflictError
+        ? error.message
+        : 'A User with that email already exists.',
+      code: 'CONFLICT',
+    });
+    return;
+  }
+  console.error(`TokTickIT administrator User ${operation} API error:`, error);
+  response.status(500).json({
+    error: `Unable to ${operation}.`,
+    code: 'UNEXPECTED_ERROR',
+  });
+}
+
 function sendStaffTicketOperationFailure(
   response: Response,
   error: unknown,
@@ -713,21 +745,24 @@ export function createApp(
       }
       response.status(200).json(await listAdminUsers(adminDatabase, query));
     } catch (error) {
-      if (error instanceof AdminUserValidationError) {
-        response.status(400).json({
-          error: 'Please correct the Administrator User fields.',
-          code: 'VALIDATION_FAILED',
-          fieldErrors: error.fieldErrors,
-        });
-        return;
-      }
-      console.error('TokTickIT administrator users list API error:', error);
-      response.status(500).json({
-        error: 'Unable to list administrator users.',
-        code: 'UNEXPECTED_ERROR',
-      });
+      sendAdminUserFailure(response, error, 'list administrator users');
     }
   });
+
+  app.post(
+    '/api/admin/users',
+    requireRole(database, ['ADMINISTRATOR']),
+    requireCsrf(),
+    async (request, response) => {
+      try {
+        const input = parseCreateAdminUserPayload(request.body);
+        const adminDatabase = database as unknown as AdminUserDatabase;
+        response.status(201).json(await createAdminUser(adminDatabase, input));
+      } catch (error) {
+        sendAdminUserFailure(response, error, 'create administrator user');
+      }
+    }
+  );
 
   app.get('/api/staff/tickets', requireRole(database, ['IT_STAFF']), async (request, response) => {
     try {
