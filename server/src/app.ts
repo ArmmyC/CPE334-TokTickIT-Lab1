@@ -18,6 +18,12 @@ import {
 import { createAuthRouter } from './auth/routes.js';
 import type { AuthDatabase } from './auth/types.js';
 import {
+  AdminUserValidationError,
+  listAdminUsers,
+  parseAdminUserQuery,
+  type AdminUserDatabase,
+} from './admin/users.js';
+import {
   buildStaffQueueOrderBy,
   buildStaffQueueWhere,
   parseStaffQueueQuery,
@@ -254,7 +260,8 @@ export type TicketApiDatabase = {
 };
 
 export type ApplicationApiDatabase = CategoryApiDatabase &
-  Partial<RelatedSystemApiDatabase & TicketApiDatabase & AuthDatabase>;
+  Partial<RelatedSystemApiDatabase & TicketApiDatabase & AuthDatabase> &
+  Partial<AdminUserDatabase>;
 
 type CreateTicketInput = {
   categoryId: number;
@@ -696,6 +703,31 @@ export function createApp(
   });
 
   app.use('/api', requireNormalAccess(database));
+
+  app.get('/api/admin/users', requireRole(database, ['ADMINISTRATOR']), async (request, response) => {
+    try {
+      const query = parseAdminUserQuery(request.query);
+      const adminDatabase = database as unknown as AdminUserDatabase;
+      if (!adminDatabase.user?.findMany) {
+        throw new Error('Administrator User database access is unavailable.');
+      }
+      response.status(200).json(await listAdminUsers(adminDatabase, query));
+    } catch (error) {
+      if (error instanceof AdminUserValidationError) {
+        response.status(400).json({
+          error: 'Please correct the Administrator User fields.',
+          code: 'VALIDATION_FAILED',
+          fieldErrors: error.fieldErrors,
+        });
+        return;
+      }
+      console.error('TokTickIT administrator users list API error:', error);
+      response.status(500).json({
+        error: 'Unable to list administrator users.',
+        code: 'UNEXPECTED_ERROR',
+      });
+    }
+  });
 
   app.get('/api/staff/tickets', requireRole(database, ['IT_STAFF']), async (request, response) => {
     try {
