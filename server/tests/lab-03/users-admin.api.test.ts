@@ -14,7 +14,8 @@ async function createAdminUsersHarness() {
     { role: 'IT_STAFF' },
   ]);
   const findMany = vi.fn();
-  Object.assign(auth.database.user, { findMany });
+  const create = vi.fn();
+  Object.assign(auth.database.user, { findMany, create });
 
   const database = withAuthDatabase({
     category: {
@@ -26,6 +27,7 @@ async function createAdminUsersHarness() {
     ...auth,
     app: createApp(database),
     findMany,
+    create,
   };
 }
 
@@ -162,5 +164,152 @@ describe('Lab 3 Administrator User Management list API', () => {
       code: 'UNEXPECTED_ERROR',
     });
     expect(JSON.stringify(response.body)).not.toContain('database unavailable');
+  });
+});
+
+describe('Lab 3 Administrator User Management creation API', () => {
+  it('creates one User with a normalized email, hashed initial password, and forced password change', async () => {
+    const harness = await createAdminUsersHarness();
+    const createdUser: AuthUserRecord = {
+      id: 4,
+      name: 'New Requester',
+      email: 'new.requester@example.test',
+      passwordHash: 'scrypt$v1$N=32768,r=8,p=1$hashed$placeholder',
+      role: 'REQUESTER',
+      isActive: true,
+      mustChangePassword: true,
+      createdAt: new Date('2026-09-17T01:00:00.000Z'),
+      updatedAt: new Date('2026-09-17T01:00:00.000Z'),
+    };
+    harness.create.mockResolvedValue(createdUser);
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .post('/api/admin/users')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({
+        name: '  New Requester  ',
+        email: '  New.Requester@Example.Test ',
+        role: 'REQUESTER',
+        isActive: true,
+        initialPassword: 'Initial-password1!',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual(safeUser(createdUser));
+    expect(JSON.stringify(response.body)).not.toContain('passwordHash');
+    expect(JSON.stringify(response.body)).not.toContain('Initial-password1!');
+    expect(harness.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'New Requester',
+        email: 'new.requester@example.test',
+        role: 'REQUESTER',
+        isActive: true,
+        mustChangePassword: true,
+        passwordHash: expect.any(String),
+      }),
+    });
+    const createData = harness.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(createData.passwordHash).not.toBe('Initial-password1!');
+  });
+
+  it.each([
+    ['missing name', { email: 'new@example.test', role: 'REQUESTER', isActive: true, initialPassword: 'Initial-password1!' }, 'name'],
+    ['blank name', { name: '   ', email: 'new@example.test', role: 'REQUESTER', isActive: true, initialPassword: 'Initial-password1!' }, 'name'],
+    ['invalid email', { name: 'New User', email: 'not-an-email', role: 'REQUESTER', isActive: true, initialPassword: 'Initial-password1!' }, 'email'],
+    ['invalid role', { name: 'New User', email: 'new@example.test', role: 'SUPPORT', isActive: true, initialPassword: 'Initial-password1!' }, 'role'],
+    ['non-boolean activation state', { name: 'New User', email: 'new@example.test', role: 'REQUESTER', isActive: 'yes', initialPassword: 'Initial-password1!' }, 'isActive'],
+    ['missing initial password', { name: 'New User', email: 'new@example.test', role: 'REQUESTER', isActive: true }, 'initialPassword'],
+    ['invalid initial password', { name: 'New User', email: 'new@example.test', role: 'REQUESTER', isActive: true, initialPassword: 'weak' }, 'initialPassword'],
+  ])('rejects %s before creating a User', async (_caseName, payload, field) => {
+    const harness = await createAdminUsersHarness();
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .post('/api/admin/users')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send(payload);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      fieldErrors: { [field]: expect.any(String) },
+    });
+    expect(harness.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown creation fields with a safe validation response', async () => {
+    const harness = await createAdminUsersHarness();
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .post('/api/admin/users')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({
+        name: 'New User',
+        email: 'new@example.test',
+        role: 'REQUESTER',
+        isActive: true,
+        initialPassword: 'Initial-password1!',
+        passwordHash: 'client-controlled',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_FAILED');
+    expect(harness.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate normalized email without creating a User', async () => {
+    const harness = await createAdminUsersHarness();
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .post('/api/admin/users')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send({
+        name: 'Duplicate User',
+        email: '  ARIYA@EXAMPLE.TEST ',
+        role: 'REQUESTER',
+        isActive: true,
+        initialPassword: 'Initial-password1!',
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('CONFLICT');
+    expect(harness.create).not.toHaveBeenCalled();
+  });
+
+  it('requires CSRF protection for User creation', async () => {
+    const harness = await createAdminUsersHarness();
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .post('/api/admin/users')
+      .send({
+        name: 'New User',
+        email: 'new@example.test',
+        role: 'REQUESTER',
+        isActive: true,
+        initialPassword: 'Initial-password1!',
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('CSRF_VALIDATION_FAILED');
+    expect(harness.create).not.toHaveBeenCalled();
+  });
+
+  it('returns a safe validation response for malformed JSON', async () => {
+    const harness = await createAdminUsersHarness();
+    const administrator = await harness.login(harness.app);
+
+    const response = await administrator.agent
+      .post('/api/admin/users')
+      .set('content-type', 'application/json')
+      .set('x-csrf-token', administrator.csrfToken)
+      .send('{"name":');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Invalid JSON request.');
+    expect(harness.create).not.toHaveBeenCalled();
   });
 });
