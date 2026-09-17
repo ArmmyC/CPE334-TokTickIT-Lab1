@@ -1,7 +1,7 @@
-import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from './auth-context';
-import { apiFetch, readJson } from './api';
+import { apiErrorMessage, apiFetch, isApiErrorBody, readJson } from './api';
 
 type TicketReference = {
   id: number;
@@ -10,6 +10,28 @@ type TicketReference = {
 
 type TicketRequester = TicketReference & {
   email: string;
+};
+
+type TicketAuthor = {
+  id: number;
+  name: string;
+  role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR';
+};
+
+type TicketOwner = TicketAuthor & {
+  email: string;
+};
+
+export type PublicComment = {
+  id: number;
+  content: string;
+  author: TicketAuthor;
+  createdAt: string;
+};
+
+export type RequesterResolution = {
+  resolvedAt: string;
+  resolvedBy: TicketAuthor;
 };
 
 type TicketDetail = {
@@ -24,11 +46,15 @@ type TicketDetail = {
   requestedPriority: string;
   itPriority: string | null;
   currentStatus: string;
+  owner: TicketOwner | null;
+  attachments: Attachment[];
+  publicComments: PublicComment[];
+  requesterResolution: RequesterResolution | null;
   createdAt: string;
   updatedAt: string;
 };
 
-type Attachment = {
+export type Attachment = {
   id: number;
   ticketId?: number;
   originalName: string;
@@ -42,11 +68,6 @@ type Attachment = {
 
 type TicketDetailResponse = {
   ticket: TicketDetail;
-  attachments: Attachment[];
-};
-
-type ApiError = {
-  error?: string;
 };
 
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -71,6 +92,18 @@ function isRequester(value: unknown): value is TicketRequester {
   return isRecord(value) && Number.isSafeInteger(value.id) && typeof value.name === 'string' && typeof value.email === 'string';
 }
 
+function isAuthor(value: unknown): value is TicketAuthor {
+  return isRecord(value)
+    && Number.isSafeInteger(value.id)
+    && typeof value.name === 'string'
+    && (value.role === 'REQUESTER' || value.role === 'IT_STAFF' || value.role === 'ADMINISTRATOR');
+}
+
+function isOwner(value: unknown): value is TicketOwner {
+  const candidate = value as Partial<TicketOwner>;
+  return isAuthor(value) && typeof candidate.email === 'string';
+}
+
 function isAttachment(value: unknown): value is Attachment {
   return isRecord(value) &&
     Number.isSafeInteger(value.id) &&
@@ -83,8 +116,22 @@ function isAttachment(value: unknown): value is Attachment {
     typeof value.downloadAvailable === 'boolean';
 }
 
+function isPublicComment(value: unknown): value is PublicComment {
+  return isRecord(value)
+    && Number.isSafeInteger(value.id)
+    && typeof value.content === 'string'
+    && isAuthor(value.author)
+    && typeof value.createdAt === 'string';
+}
+
+function isRequesterResolution(value: unknown): value is RequesterResolution {
+  return isRecord(value)
+    && typeof value.resolvedAt === 'string'
+    && isAuthor(value.resolvedBy);
+}
+
 function isTicketDetailResponse(value: unknown): value is TicketDetailResponse {
-  if (!isRecord(value) || !isRecord(value.ticket) || !Array.isArray(value.attachments)) {
+  if (!isRecord(value) || !isRecord(value.ticket)) {
     return false;
   }
   const ticket = value.ticket;
@@ -99,9 +146,14 @@ function isTicketDetailResponse(value: unknown): value is TicketDetailResponse {
     typeof ticket.requestedPriority === 'string' &&
     (ticket.itPriority === null || typeof ticket.itPriority === 'string') &&
     typeof ticket.currentStatus === 'string' &&
+    (ticket.owner === null || isOwner(ticket.owner)) &&
+    Array.isArray(ticket.attachments) &&
+    ticket.attachments.every(isAttachment) &&
+    Array.isArray(ticket.publicComments) &&
+    ticket.publicComments.every(isPublicComment) &&
+    (ticket.requesterResolution === null || isRequesterResolution(ticket.requesterResolution)) &&
     typeof ticket.createdAt === 'string' &&
-    typeof ticket.updatedAt === 'string' &&
-    value.attachments.every(isAttachment);
+    typeof ticket.updatedAt === 'string';
 }
 
 function formatDate(value: string): string {
@@ -151,12 +203,14 @@ type AttachmentSectionProps = {
   ticketId: number;
   attachments: Attachment[];
   onAttachmentsChange: (attachments: Attachment[]) => void;
+  canManage?: boolean;
 };
 
-function AttachmentSection({
+export function AttachmentSection({
   ticketId,
   attachments,
   onAttachmentsChange,
+  canManage = true,
 }: AttachmentSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -360,9 +414,11 @@ function AttachmentSection({
                     <a className="btn btn-secondary btn-sm" href={attachmentUrl(attachment.id, 'attachment')}>
                       Download {attachment.originalName}
                     </a>
-                    <button type="button" className="btn btn-outline-danger btn-sm" aria-label={`Remove Attachment ${attachment.originalName}`} onClick={(event) => openRemoval(attachment, event.currentTarget)}>
-                      Remove
-                    </button>
+                    {canManage && (
+                      <button type="button" className="btn btn-outline-danger btn-sm" aria-label={`Remove Attachment ${attachment.originalName}`} onClick={(event) => openRemoval(attachment, event.currentTarget)}>
+                        Remove
+                      </button>
+                    )}
                   </div>
                 )}
               </li>
@@ -371,27 +427,29 @@ function AttachmentSection({
         </ul>
       )}
 
-      <div className="attachment-upload-panel">
-        <label htmlFor="add-attachment" className="required-label">Add attachment</label>
-        <input
-          ref={inputRef}
-          id="add-attachment"
-          aria-label="Add attachment"
-          aria-describedby={fileError ? 'attachment-file-error' : 'attachment-file-help'}
-          type="file"
-          accept=".jpg,.jpeg,.png,.webp,.pdf"
-          disabled={activeCount >= MAX_ACTIVE_ATTACHMENTS || uploading}
-          onChange={selectFile}
-        />
-        <small id="attachment-file-help">JPG, PNG, WEBP, or PDF, maximum 5 MB per file.</small>
-        {fileError && <p id="attachment-file-error" role="alert" className="field-error">{fileError}</p>}
-        {selectedFile && <p className="selected-attachment">Selected: <strong>{selectedFile.name}</strong> ({formatBytes(selectedFile.size)})</p>}
-        <button type="button" className="btn btn-primary" disabled={!selectedFile || uploading || activeCount >= MAX_ACTIVE_ATTACHMENTS} onClick={() => void uploadFile()}>
-          {uploading ? 'Uploading Attachment...' : 'Upload Attachment'}
-        </button>
-        {uploadMessage && <p role="status" className="state-message state-message-success">{uploadMessage}</p>}
-        {uploadError && <p role="alert" className="state-message state-message-error">{uploadError}</p>}
-      </div>
+      {canManage && (
+        <div className="attachment-upload-panel">
+          <label htmlFor="add-attachment" className="required-label">Add attachment</label>
+          <input
+            ref={inputRef}
+            id="add-attachment"
+            aria-label="Add attachment"
+            aria-describedby={fileError ? 'attachment-file-error' : 'attachment-file-help'}
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,.pdf"
+            disabled={activeCount >= MAX_ACTIVE_ATTACHMENTS || uploading}
+            onChange={selectFile}
+          />
+          <small id="attachment-file-help">JPG, PNG, WEBP, or PDF, maximum 5 MB per file.</small>
+          {fileError && <p id="attachment-file-error" role="alert" className="field-error">{fileError}</p>}
+          {selectedFile && <p className="selected-attachment">Selected: <strong>{selectedFile.name}</strong> ({formatBytes(selectedFile.size)})</p>}
+          <button type="button" className="btn btn-primary" disabled={!selectedFile || uploading || activeCount >= MAX_ACTIVE_ATTACHMENTS} onClick={() => void uploadFile()}>
+            {uploading ? 'Uploading Attachment...' : 'Upload Attachment'}
+          </button>
+          {uploadMessage && <p role="status" className="state-message state-message-success">{uploadMessage}</p>}
+          {uploadError && <p role="alert" className="state-message state-message-error">{uploadError}</p>}
+        </div>
+      )}
 
       {removing && (
         <div className="attachment-dialog-backdrop">
@@ -425,6 +483,173 @@ function AttachmentSection({
               <button type="button" className="btn btn-secondary" onClick={closeRemoval} disabled={removingBusy}>Cancel</button>
               <button type="button" className="btn btn-danger" onClick={() => void removeAttachment()} disabled={removingBusy}>
                 {removingBusy ? 'Removing Attachment...' : 'Remove Attachment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type PublicCommentsSectionProps = {
+  ticketId: number;
+  comments: PublicComment[];
+  requesterResolution: RequesterResolution | null;
+  onCommentsChange: (comments: PublicComment[]) => void;
+  onResolutionChange: (resolution: RequesterResolution) => void;
+};
+
+function formatAuthorRole(role: TicketAuthor['role']): string {
+  return role === 'IT_STAFF' ? 'IT Staff' : role === 'ADMINISTRATOR' ? 'Administrator' : 'Requester';
+}
+
+function PublicCommentsSection({
+  ticketId,
+  comments,
+  requesterResolution,
+  onCommentsChange,
+  onResolutionChange,
+}: PublicCommentsSectionProps) {
+  const [commentText, setCommentText] = useState('');
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const [commentSuccess, setCommentSuccess] = useState<string | null>(null);
+  const [postingComment, setPostingComment] = useState(false);
+  const [resolutionConfirmation, setResolutionConfirmation] = useState(false);
+  const [resolutionError, setResolutionError] = useState<string | null>(null);
+  const [resolutionSuccess, setResolutionSuccess] = useState<string | null>(null);
+  const [recordingResolution, setRecordingResolution] = useState(false);
+
+  const postComment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const content = commentText.trim();
+    if (content.length < 1 || content.length > 4000) {
+      setCommentError('Public Comment must be between 1 and 4000 characters after trimming.');
+      setCommentSuccess(null);
+      return;
+    }
+
+    setPostingComment(true);
+    setCommentError(null);
+    setCommentSuccess(null);
+    try {
+      const response = await apiFetch(`/api/tickets/${ticketId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      const body = await readJson(response);
+      const comment = isRecord(body) && isPublicComment(body.comment) ? body.comment : null;
+      if (!response.ok || !comment) {
+        throw new Error(apiErrorMessage(isApiErrorBody(body) ? body : null, 'Unable to post the Public Comment.'));
+      }
+      onCommentsChange([...comments, comment]);
+      setCommentText('');
+      setCommentSuccess('Public Comment posted.');
+    } catch (error) {
+      setCommentError(error instanceof Error ? error.message : 'Unable to post the Public Comment.');
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const recordResolution = async () => {
+    if (recordingResolution || requesterResolution) return;
+    setRecordingResolution(true);
+    setResolutionError(null);
+    setResolutionSuccess(null);
+    try {
+      const response = await apiFetch(`/api/tickets/${ticketId}/requester-resolution`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const body = await readJson(response);
+      const resolution = isRecord(body) && isRequesterResolution(body.requesterResolution)
+        ? body.requesterResolution
+        : null;
+      if (!response.ok || !resolution) {
+        throw new Error(apiErrorMessage(isApiErrorBody(body) ? body : null, 'Unable to record the resolution indication.'));
+      }
+      onResolutionChange(resolution);
+      setResolutionConfirmation(false);
+      setResolutionSuccess('Problem Appears Resolved indication recorded.');
+    } catch (error) {
+      setResolutionError(error instanceof Error ? error.message : 'Unable to record the resolution indication.');
+    } finally {
+      setRecordingResolution(false);
+    }
+  };
+
+  return (
+    <section className="ticket-detail-card communication-card public-comments-card" aria-labelledby="public-comments-title">
+      <h2 id="public-comments-title">Public Comments</h2>
+      <p className="communication-help">Visible to the Requester, IT Staff, and Administrator.</p>
+      {comments.length === 0 ? (
+        <p className="state-message state-message-warning">No Public Comments have been recorded.</p>
+      ) : (
+        <ol className="communication-list">
+          {comments.map((comment) => (
+            <li key={comment.id} className="communication-entry">
+              <div className="communication-entry-meta">
+                <strong>{comment.author.name}</strong>
+                <span>{formatAuthorRole(comment.author.role)} · {formatDate(comment.createdAt)}</span>
+              </div>
+              <p>{comment.content}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <form className="communication-composer" onSubmit={postComment}>
+        <label htmlFor="requester-public-comment">Public Comment</label>
+        <textarea
+          id="requester-public-comment"
+          value={commentText}
+          maxLength={4000}
+          rows={4}
+          onChange={(event) => {
+            setCommentText(event.target.value);
+            setCommentError(null);
+          }}
+          aria-describedby="requester-public-comment-help"
+        />
+        <small id="requester-public-comment-help">This message will be visible to IT Staff and Administrators.</small>
+        {commentError && <p role="alert" className="field-error">{commentError}</p>}
+        <div className="action-row">
+          <button type="submit" className="btn btn-primary" disabled={postingComment}>
+            {postingComment ? 'Posting Public Comment...' : 'Post Public Comment'}
+          </button>
+        </div>
+        {commentSuccess && <p role="status" className="state-message state-message-success">{commentSuccess}</p>}
+      </form>
+
+      <div className="requester-resolution-action">
+        <h3>Problem Appears Resolved</h3>
+        {requesterResolution ? (
+          <p role="status">
+            Problem Appears Resolved indication recorded on {formatDate(requesterResolution.resolvedAt)}. This does not change the formal Ticket status.
+          </p>
+        ) : (
+          <>
+            <p className="communication-help">This records your indication separately from the formal Ticket status.</p>
+            <button type="button" className="btn btn-secondary" onClick={() => { setResolutionConfirmation(true); setResolutionError(null); }} disabled={recordingResolution}>
+              Problem Appears Resolved
+            </button>
+          </>
+        )}
+        {resolutionSuccess && <p role="status" className="state-message state-message-success">{resolutionSuccess}</p>}
+        {resolutionError && <p role="alert" className="state-message state-message-error">{resolutionError}</p>}
+      </div>
+
+      {resolutionConfirmation && (
+        <div className="ticket-confirmation-backdrop">
+          <div className="ticket-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="requester-resolution-confirmation-title">
+            <h2 id="requester-resolution-confirmation-title">Confirm resolution indication</h2>
+            <p>This records that the problem appears resolved. It does not change the formal Ticket status.</p>
+            <div className="action-row">
+              <button type="button" className="btn btn-secondary" onClick={() => setResolutionConfirmation(false)} disabled={recordingResolution}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={() => void recordResolution()} disabled={recordingResolution}>
+                {recordingResolution ? 'Recording Indication...' : 'Confirm Problem Appears Resolved'}
               </button>
             </div>
           </div>
@@ -480,9 +705,9 @@ export function TicketDetailPage() {
     <section className="ticket-detail-page" aria-labelledby="ticket-detail-title">
       <div className="page-heading-row ticket-detail-heading">
         <div>
-          <p className="eyebrow">TokTickIT / Lab 2</p>
+          <p className="eyebrow">TokTickIT / Lab 3</p>
           <h1 id="ticket-detail-title">Ticket Detail</h1>
-          <p className="text-secondary mb-0">Read-only Ticket information and attachment lifecycle.</p>
+          <p className="text-secondary mb-0">Read-only Ticket information, attachments, and Public Comments.</p>
         </div>
         <Link className="btn btn-secondary" to="/tickets">Back to My Tickets</Link>
       </div>
@@ -522,8 +747,25 @@ export function TicketDetailPage() {
 
           <AttachmentSection
             ticketId={detail.ticket.id}
-            attachments={detail.attachments}
-            onAttachmentsChange={(attachments) => setDetail((current) => current ? { ...current, attachments } : current)}
+            attachments={detail.ticket.attachments}
+            onAttachmentsChange={(attachments) => setDetail((current) => current ? {
+              ...current,
+              ticket: { ...current.ticket, attachments },
+            } : current)}
+          />
+
+          <PublicCommentsSection
+            ticketId={detail.ticket.id}
+            comments={detail.ticket.publicComments}
+            requesterResolution={detail.ticket.requesterResolution}
+            onCommentsChange={(publicComments) => setDetail((current) => current ? {
+              ...current,
+              ticket: { ...current.ticket, publicComments },
+            } : current)}
+            onResolutionChange={(requesterResolution) => setDetail((current) => current ? {
+              ...current,
+              ticket: { ...current.ticket, requesterResolution },
+            } : current)}
           />
         </>
       )}

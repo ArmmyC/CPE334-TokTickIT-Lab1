@@ -25,21 +25,24 @@ const activeDetail = {
     requestedPriority: 'MEDIUM',
     itPriority: null,
     currentStatus: 'NEW',
+    owner: null,
+    attachments: [
+      {
+        id: 7,
+        originalName: 'evidence.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 12000,
+        uploadedAt: '2026-08-21T10:00:00.000Z',
+        removedAt: null,
+        removalReason: null,
+        downloadAvailable: true,
+      },
+    ],
+    publicComments: [],
+    requesterResolution: null,
     createdAt: '2026-08-21T10:00:00.000Z',
     updatedAt: '2026-08-21T10:00:00.000Z',
   },
-  attachments: [
-    {
-      id: 7,
-      originalName: 'evidence.pdf',
-      mimeType: 'application/pdf',
-      sizeBytes: 12000,
-      uploadedAt: '2026-08-21T10:00:00.000Z',
-      removedAt: null,
-      removalReason: null,
-      downloadAvailable: true,
-    },
-  ],
 };
 
 const removedAttachment = {
@@ -70,7 +73,7 @@ function stubAttachmentApi() {
       return Promise.resolve({
         ok: true,
         status: 201,
-        json: async () => ({ attachment: { ...activeDetail.attachments[0], id: 9, originalName: 'new-proof.pdf' } }),
+        json: async () => ({ attachment: { ...activeDetail.ticket.attachments[0], id: 9, originalName: 'new-proof.pdf' } }),
       });
     }
     if (url === '/api/attachments/7' && init?.method === 'DELETE') {

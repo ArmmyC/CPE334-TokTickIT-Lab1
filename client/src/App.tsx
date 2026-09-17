@@ -6,7 +6,6 @@ import {
   Outlet,
   Route,
   Routes,
-  useParams,
   useNavigate,
 } from 'react-router-dom';
 import { AuthProvider, useAuth, type AuthUserRole } from './auth-context';
@@ -15,6 +14,7 @@ import { CreateTicketPage } from './CreateTicketPage';
 import { LoginPage } from './LoginPage';
 import { MyTicketsPage } from './MyTicketsPage';
 import { StaffTicketQueuePage } from './StaffTicketQueuePage';
+import { StaffTicketDetailPage } from './StaffTicketDetailPage';
 import { TicketDetailPage } from './TicketDetailPage';
 
 type HealthState = 'idle' | 'checking' | 'online' | 'offline';
@@ -288,16 +288,27 @@ function StaffOnly() {
   return <Outlet />;
 }
 
-function StaffTicketDetailPlaceholder() {
-  const { ticketId } = useParams();
+function StaffTicketDetailAccess() {
+  const { user } = useAuth();
+  if (!user || (user.role !== 'IT_STAFF' && user.role !== 'ADMINISTRATOR')) {
+    return (
+      <section className="placeholder-page" aria-labelledby="staff-detail-access-title">
+        <p className="eyebrow">TokTickIT / Access</p>
+        <h1 id="staff-detail-access-title">Staff Ticket Detail access is required</h1>
+        <p>This destination is available only to IT Staff and Administrator accounts.</p>
+      </section>
+    );
+  }
+  return <Outlet />;
+}
 
+/*
+ * The protected detail route is shared by IT Staff and Administrators. The
+ * page applies the narrower Administrator mutation rules after the route guard.
+ */
+function StaffTicketDetailRoute() {
   return (
-    <section className="placeholder-page" aria-labelledby="staff-ticket-detail-title">
-      <p className="eyebrow">TokTickIT / Lab 3</p>
-      <h1 id="staff-ticket-detail-title">Staff Ticket Detail</h1>
-      <p>Ticket {ticketId ?? 'requested'} is ready for the next IT Staff operations increment.</p>
-      <Link className="btn btn-secondary" to="/staff/tickets">Back to Ticket Queue</Link>
-    </section>
+    <StaffTicketDetailPage />
   );
 }
 
@@ -341,7 +352,10 @@ function RoutedApplication() {
         </Route>
         <Route element={<StaffOnly />}>
           <Route path="/staff/tickets" element={<StaffTicketQueuePage />} />
-          <Route path="/staff/tickets/:ticketId" element={<StaffTicketDetailPlaceholder />} />
+        </Route>
+        <Route element={<StaffTicketDetailAccess />}>
+          <Route path="/staff/tickets/:ticketId" element={<StaffTicketDetailRoute />} />
+          <Route path="/admin/tickets/:ticketId" element={<StaffTicketDetailRoute />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

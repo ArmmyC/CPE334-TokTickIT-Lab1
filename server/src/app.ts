@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
+import type { Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { Prisma } from '@prisma/client';
 import { prisma } from './lib/prisma.js';
@@ -25,6 +26,23 @@ import {
   StaffQueueValidationError,
   type StaffQueueDatabase,
 } from './tickets/staff-queue.js';
+import {
+  serializeStaffTicketDetail,
+  STAFF_TICKET_ATTACHMENT_SELECT,
+  STAFF_TICKET_COMMUNICATION_SELECT,
+  STAFF_TICKET_DETAIL_SELECT,
+  STAFF_TICKET_STATUS_TRANSITIONS,
+  parseStaffCommunicationPayload,
+  parseStaffOwnerPayload,
+  parseStaffPriorityPayload,
+  parseStaffStatusPayload,
+  StaffTicketOwnerConflictError,
+  StaffTicketResolutionConflictError,
+  StaffTicketTransitionConflictError,
+  StaffTicketValidationError,
+  type StaffTicketDetailRecord,
+  type StaffTicketDetailDatabase,
+} from './tickets/staff-detail.js';
 
 export type CategoryRecord = {
   id: number;
@@ -86,8 +104,33 @@ export type TicketDetailRecord = TicketRecord & {
     name: string;
     email: string;
   };
+  requesterResolvedAt: Date | null;
+  requesterResolvedBy: {
+    id: number;
+    name: string;
+    role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR';
+  } | null;
+  owner: {
+    id: number;
+    name: string;
+    email: string;
+    role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR';
+  } | null;
   category: CategoryRecord;
   relatedSystem: RelatedSystemRecord;
+};
+
+export type PublicCommentRecord = {
+  id: number;
+  ticketId: number;
+  authorId: number;
+  content: string;
+  createdAt: Date;
+  author: {
+    id: number;
+    name: string;
+    role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR';
+  };
 };
 
 export type AttachmentRecord = {
@@ -200,6 +243,13 @@ export type TicketApiDatabase = {
       where: { id: number };
       data: { removedAt: Date; removalReason: string };
     }): Promise<AttachmentRecord>;
+  };
+  publicComment?: {
+    findMany(args: {
+      where: { ticketId: number };
+      orderBy: { createdAt: 'asc' };
+      select: Record<string, unknown>;
+    }): Promise<PublicCommentRecord[]>;
   };
 };
 
@@ -445,6 +495,7 @@ function serializeTicketDetail(ticket: TicketDetailRecord) {
     ticketNumber: ticket.ticketNumber,
     ticketDate: ticket.ticketDate,
     requester: ticket.requester,
+    owner: ticket.owner,
     category: ticket.category,
     relatedSystem: ticket.relatedSystem,
     summary: ticket.summary,
@@ -500,6 +551,120 @@ function parseAttachmentId(value: unknown): number {
     throw new AttachmentRequestError(400, 'A valid attachmentId is required.');
   }
   return attachmentId;
+}
+
+async function loadStaffTicketDetail(
+  database: StaffTicketDetailDatabase,
+  ticketId: number,
+): Promise<StaffTicketDetailRecord | null> {
+  const ticketClient = database.ticket;
+  const attachmentClient = database.attachment;
+  const publicCommentClient = database.publicComment;
+  const internalNoteClient = database.internalNote;
+  if (
+    !ticketClient?.findUnique
+    || !attachmentClient?.findMany
+    || !publicCommentClient?.findMany
+    || !internalNoteClient?.findMany
+  ) {
+    throw new Error('Staff Ticket Detail database access is unavailable.');
+  }
+
+  const ticket = await ticketClient.findUnique({
+    where: { id: ticketId },
+    select: STAFF_TICKET_DETAIL_SELECT,
+  });
+  if (!ticket) {
+    return null;
+  }
+
+  const [attachments, publicComments, internalNotes] = await Promise.all([
+    attachmentClient.findMany({
+      where: { ticketId },
+      orderBy: { uploadedAt: 'asc' },
+      select: STAFF_TICKET_ATTACHMENT_SELECT,
+    }),
+    publicCommentClient.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: 'asc' },
+      select: STAFF_TICKET_COMMUNICATION_SELECT,
+    }),
+    internalNoteClient.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: 'asc' },
+      select: STAFF_TICKET_COMMUNICATION_SELECT,
+    }),
+  ]);
+
+  return {
+    ...ticket,
+    attachments,
+    publicComments,
+    internalNotes,
+  };
+}
+
+function serializePublicComment(comment: PublicCommentRecord) {
+  return {
+    id: comment.id,
+    content: comment.content,
+    author: comment.author,
+    createdAt: comment.createdAt,
+  };
+}
+
+function sendStaffTicketNotFound(response: Response): void {
+  response.status(404).json({
+    error: 'Ticket not found.',
+    code: 'TICKET_NOT_FOUND',
+  });
+}
+
+function sendStaffTicketValidationError(response: Response, error: StaffTicketValidationError): void {
+  response.status(400).json({
+    error: 'Please correct the Ticket operation fields.',
+    code: 'VALIDATION_FAILED',
+    fieldErrors: error.fieldErrors,
+  });
+}
+
+function sendStaffTicketOperationFailure(
+  response: Response,
+  error: unknown,
+  message: string,
+): void {
+  if (error instanceof StaffTicketValidationError) {
+    sendStaffTicketValidationError(response, error);
+    return;
+  }
+  if (error instanceof StaffTicketOwnerConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'OWNER_NOT_ELIGIBLE',
+    });
+    return;
+  }
+  if (error instanceof StaffTicketResolutionConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'RESOLUTION_ALREADY_RECORDED',
+    });
+    return;
+  }
+  if (error instanceof StaffTicketTransitionConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'STATUS_TRANSITION_CONFLICT',
+      currentStatus: error.currentStatus,
+      allowedStatuses: error.allowedStatuses,
+    });
+    return;
+  }
+  console.error(`TokTickIT ${message} API error:`, error);
+  response.status(500).json({
+    error: `Unable to ${message.toLowerCase()}.`,
+    code: 'UNEXPECTED_ERROR',
+  });
 }
 
 export function createApp(
@@ -612,6 +777,292 @@ export function createApp(
         error: 'Unable to load Staff Ticket Queue.',
         code: 'UNEXPECTED_ERROR',
       });
+    }
+  });
+
+  app.get('/api/staff/tickets/:ticketId', requireRole(database, ['IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        response.status(400).json({
+          error: 'A valid ticketId is required.',
+          code: 'VALIDATION_FAILED',
+        });
+        return;
+      }
+
+      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!ticket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ ticket: serializeStaffTicketDetail(ticket) });
+    } catch (error) {
+      console.error('TokTickIT Staff Ticket Detail API error:', error);
+      response.status(500).json({
+        error: 'Unable to load Staff Ticket Detail.',
+        code: 'UNEXPECTED_ERROR',
+      });
+    }
+  });
+
+  app.patch('/api/staff/tickets/:ticketId/owner', requireRole(database, ['IT_STAFF']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffOwnerPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.ticket?.update || !staffDetailDatabase.user?.findUnique) {
+        throw new Error('Staff Ticket owner database access is unavailable.');
+      }
+      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!ticket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      if (input.ownerId !== null) {
+        const owner = await staffDetailDatabase.user.findUnique({
+          where: { id: input.ownerId },
+          select: { id: true, name: true, email: true, role: true, isActive: true },
+        });
+        if (!owner || !owner.isActive || !['IT_STAFF', 'ADMINISTRATOR'].includes(owner.role)) {
+          throw new StaffTicketOwnerConflictError();
+        }
+      }
+      await staffDetailDatabase.ticket.update({
+        where: { id: ticketId },
+        data: { ownerId: input.ownerId },
+      });
+      const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!updatedTicket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ ticket: serializeStaffTicketDetail(updatedTicket) });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'update Staff Ticket owner');
+    }
+  });
+
+  app.patch('/api/staff/tickets/:ticketId/priority', requireRole(database, ['IT_STAFF', 'ADMINISTRATOR']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffPriorityPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.ticket?.update) {
+        throw new Error('Staff Ticket priority database access is unavailable.');
+      }
+      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!ticket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      await staffDetailDatabase.ticket.update({
+        where: { id: ticketId },
+        data: { itPriority: input.itPriority },
+      });
+      const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!updatedTicket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ ticket: serializeStaffTicketDetail(updatedTicket) });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'update IT Priority');
+    }
+  });
+
+  app.patch('/api/staff/tickets/:ticketId/status', requireRole(database, ['IT_STAFF']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffStatusPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.ticket?.update) {
+        throw new Error('Staff Ticket status database access is unavailable.');
+      }
+      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!ticket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      const allowedStatuses = STAFF_TICKET_STATUS_TRANSITIONS[ticket.currentStatus];
+      if (!allowedStatuses.includes(input.currentStatus)) {
+        throw new StaffTicketTransitionConflictError(ticket.currentStatus, allowedStatuses);
+      }
+      await staffDetailDatabase.ticket.update({
+        where: { id: ticketId },
+        data: { currentStatus: input.currentStatus },
+      });
+      const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!updatedTicket) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ ticket: serializeStaffTicketDetail(updatedTicket) });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'update Ticket status');
+    }
+  });
+
+  app.get('/api/staff/tickets/:ticketId/comments', requireRole(database, ['IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const detail = await loadStaffTicketDetail(
+        database as unknown as StaffTicketDetailDatabase,
+        ticketId,
+      );
+      if (!detail) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ items: detail.publicComments });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'load Staff Ticket comments');
+    }
+  });
+
+  app.post('/api/staff/tickets/:ticketId/comments', requireRole(database, ['IT_STAFF']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffCommunicationPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.publicComment?.create) {
+        throw new Error('Public Comment database access is unavailable.');
+      }
+      const detail = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!detail) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      const created = await staffDetailDatabase.publicComment.create({
+        data: {
+          ticketId,
+          authorId: request.auth.user.id,
+          content: input.content,
+        },
+      });
+      response.status(201).json({
+        comment: {
+          id: created.id,
+          content: created.content,
+          author: {
+            id: request.auth.user.id,
+            name: request.auth.user.name,
+            role: request.auth.user.role,
+          },
+          createdAt: created.createdAt,
+        },
+      });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'create Staff Ticket comment');
+    }
+  });
+
+  app.get('/api/staff/tickets/:ticketId/notes', requireRole(database, ['IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const detail = await loadStaffTicketDetail(
+        database as unknown as StaffTicketDetailDatabase,
+        ticketId,
+      );
+      if (!detail) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ items: detail.internalNotes });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'load Staff Ticket notes');
+    }
+  });
+
+  app.post('/api/staff/tickets/:ticketId/notes', requireRole(database, ['IT_STAFF']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffCommunicationPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.internalNote?.create) {
+        throw new Error('Internal Note database access is unavailable.');
+      }
+      const detail = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!detail) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      const created = await staffDetailDatabase.internalNote.create({
+        data: {
+          ticketId,
+          authorId: request.auth.user.id,
+          content: input.content,
+        },
+      });
+      response.status(201).json({
+        note: {
+          id: created.id,
+          content: created.content,
+          author: {
+            id: request.auth.user.id,
+            name: request.auth.user.name,
+            role: request.auth.user.role,
+          },
+          createdAt: created.createdAt,
+        },
+      });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'create Staff Ticket note');
     }
   });
 
@@ -774,6 +1225,123 @@ export function createApp(
     }
   });
 
+  app.get('/api/tickets/:ticketId/comments', requireRole(database, ['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const detail = await loadStaffTicketDetail(
+        database as unknown as StaffTicketDetailDatabase,
+        ticketId,
+      );
+      if (!detail) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      if (request.auth.user.role === 'REQUESTER' && detail.requester.id !== request.auth.user.id) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      response.status(200).json({ items: detail.publicComments });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'load Ticket comments');
+    }
+  });
+
+  app.post('/api/tickets/:ticketId/comments', requireRole(database, ['REQUESTER']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const input = parseStaffCommunicationPayload(request.body);
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.publicComment?.create) {
+        throw new Error('Public Comment database access is unavailable.');
+      }
+      const detail = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!detail || detail.requester.id !== request.auth.user.id) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      const created = await staffDetailDatabase.publicComment.create({
+        data: {
+          ticketId,
+          authorId: request.auth.user.id,
+          content: input.content,
+        },
+      });
+      response.status(201).json({
+        comment: {
+          id: created.id,
+          content: created.content,
+          author: {
+            id: request.auth.user.id,
+            name: request.auth.user.name,
+            role: request.auth.user.role,
+          },
+          createdAt: created.createdAt,
+        },
+      });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'create Ticket comment');
+    }
+  });
+
+  app.post('/api/tickets/:ticketId/requester-resolution', requireRole(database, ['REQUESTER']), requireCsrf(), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const ticketId = parsePositiveInteger(request.params.ticketId);
+      if (ticketId === null) {
+        throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
+      }
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
+      if (!staffDetailDatabase.ticket?.update) {
+        throw new Error('Requester resolution database access is unavailable.');
+      }
+      const detail = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
+      if (!detail || detail.requester.id !== request.auth.user.id) {
+        sendStaffTicketNotFound(response);
+        return;
+      }
+      if (detail.requesterResolvedAt !== null) {
+        throw new StaffTicketResolutionConflictError();
+      }
+      const resolvedAt = new Date();
+      await staffDetailDatabase.ticket.update({
+        where: { id: ticketId },
+        data: {
+          requesterResolvedAt: resolvedAt,
+          requesterResolvedById: request.auth.user.id,
+        },
+      });
+      response.status(200).json({
+        requesterResolution: {
+          resolvedAt,
+          resolvedBy: {
+            id: request.auth.user.id,
+            name: request.auth.user.name,
+            role: request.auth.user.role,
+          },
+        },
+      });
+    } catch (error) {
+      sendStaffTicketOperationFailure(response, error, 'record requester resolution');
+    }
+  });
+
   app.get('/api/tickets/:ticketId', requireRole(database, ['REQUESTER']), async (request, response) => {
     try {
       if (!request.auth) {
@@ -810,12 +1378,19 @@ export function createApp(
           requestedPriority: true,
           itPriority: true,
           currentStatus: true,
+          requesterResolvedAt: true,
+          requesterResolvedBy: {
+            select: { id: true, name: true, role: true },
+          },
+          owner: {
+            select: { id: true, name: true, email: true, role: true },
+          },
           createdAt: true,
           updatedAt: true,
         },
       });
       if (!ticket || ticket.requesterId !== request.auth.user.id) {
-        response.status(404).json({ error: 'Ticket not found.' });
+        response.status(404).json({ error: 'Ticket not found.', code: 'TICKET_NOT_FOUND' });
         return;
       }
 
@@ -835,9 +1410,33 @@ export function createApp(
         },
       });
 
+      const publicComments = database.publicComment?.findMany
+        ? await database.publicComment.findMany({
+            where: { ticketId },
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              ticketId: true,
+              authorId: true,
+              content: true,
+              createdAt: true,
+              author: { select: { id: true, name: true, role: true } },
+            },
+          })
+        : [];
+
       response.status(200).json({
-        ticket: serializeTicketDetail(ticket),
-        attachments: attachments.map(serializeAttachment),
+        ticket: {
+          ...serializeTicketDetail(ticket),
+          attachments: attachments.map(serializeAttachment),
+          publicComments: publicComments.map(serializePublicComment),
+          requesterResolution: ticket.requesterResolvedAt && ticket.requesterResolvedBy
+            ? {
+                resolvedAt: ticket.requesterResolvedAt,
+                resolvedBy: ticket.requesterResolvedBy,
+              }
+            : null,
+        },
       });
     } catch (error) {
       if (error instanceof AttachmentRequestError) {
@@ -1021,14 +1620,38 @@ export function createApp(
     return attachment;
   };
 
-  app.get('/api/attachments/:attachmentId', requireRole(database, ['REQUESTER']), async (request, response) => {
+  const findReadableAttachment = async (
+    attachmentId: number,
+    user: { id: number; role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR' },
+  ): Promise<AttachmentRecord | null> => {
+    if (!database.ticket?.findUnique || !database.attachment?.findUnique) {
+      throw new Error('Attachment database access is unavailable.');
+    }
+
+    const attachment = await database.attachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment) {
+      return null;
+    }
+
+    const ticket = await database.ticket.findUnique({
+      where: { id: attachment.ticketId },
+      select: { id: true, requesterId: true },
+    });
+    if (!ticket || (user.role === 'REQUESTER' && ticket.requesterId !== user.id)) {
+      return null;
+    }
+
+    return attachment;
+  };
+
+  app.get('/api/attachments/:attachmentId', requireRole(database, ['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
     try {
       if (!request.auth) {
         sendAuthenticationRequired(response);
         return;
       }
       const attachmentId = parseAttachmentId(request.params.attachmentId);
-      const attachment = await findOwnedAttachment(attachmentId, request.auth.user.id);
+      const attachment = await findReadableAttachment(attachmentId, request.auth.user);
       if (!attachment) {
         response.status(404).json({ error: 'Attachment not found.' });
         return;
@@ -1045,7 +1668,7 @@ export function createApp(
     }
   });
 
-  app.get('/api/attachments/:attachmentId/download', requireRole(database, ['REQUESTER']), async (request, response) => {
+  app.get('/api/attachments/:attachmentId/download', requireRole(database, ['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
     try {
       if (!request.auth) {
         sendAuthenticationRequired(response);
@@ -1057,7 +1680,7 @@ export function createApp(
         throw new AttachmentRequestError(400, 'Disposition must be inline or attachment.');
       }
       const disposition = dispositionValue === 'inline' ? 'inline' : 'attachment';
-      const attachment = await findOwnedAttachment(attachmentId, request.auth.user.id);
+      const attachment = await findReadableAttachment(attachmentId, request.auth.user);
       if (!attachment || attachment.removedAt !== null) {
         response.status(404).json({ error: 'Attachment not found.' });
         return;
