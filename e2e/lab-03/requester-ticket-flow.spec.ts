@@ -48,7 +48,10 @@ test('authenticated Requester preserves Ticket, Attachment, Comment, and resolut
   await expect(page.getByText(summary, { exact: true })).toBeVisible();
   await expect(page.getByText(initialAttachment, { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: `Preview ${initialAttachment}`, exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: `Download ${initialAttachment}`, exact: true })).toBeVisible();
+  const initialDownload = page.getByRole('link', { name: `Download ${initialAttachment}`, exact: true });
+  await expect(initialDownload).toBeVisible();
+  const initialDownloadHref = await initialDownload.getAttribute('href');
+  expect(initialDownloadHref).toMatch(/\/api\/attachments\/\d+\/download\?/);
 
   await page.getByLabel('Add attachment', { exact: true }).setInputFiles(pdfFile(followUpAttachment));
   await page.getByRole('button', { name: 'Upload Attachment', exact: true }).click();
@@ -77,6 +80,14 @@ test('authenticated Requester preserves Ticket, Attachment, Comment, and resolut
   await expect(page.getByRole('status').filter({ hasText: 'Problem Appears Resolved indication recorded.' })).toBeVisible();
   await expect(page.locator('.ticket-detail-header-fields .ticket-status-badge')).toHaveText('NEW');
   await assertNoHorizontalOverflow(page, 'Requester Ticket Detail');
+
+  await page.getByRole('button', { name: 'Log out', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await signInWithSeededAccount(page, SEEDED_ACCOUNTS.secondaryRequester);
+  await page.goto(ticketHref ?? '/tickets/invalid');
+  await expect(page.getByRole('alert')).toContainText('Ticket not found.');
+  const foreignAttachmentResponse = await page.request.get(new URL(initialDownloadHref ?? '', page.url()).toString());
+  expect(foreignAttachmentResponse.status()).toBe(404);
 
   await page.getByRole('button', { name: 'Log out', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);

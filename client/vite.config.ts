@@ -7,13 +7,13 @@ export default defineConfig({
     port: 5183,
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: 'http://127.0.0.1:4000',
+        changeOrigin: true,
         configure: (proxy) => {
-          // The browser Origin names the Vite dev server, while the API sees
-          // the proxied request on port 4000. Let the API apply its normal
-          // same-origin check to the trusted local proxy hop.
+          // Rewrite the local proxy hop to the API origin so the API's normal
+          // same-origin check remains active during browser E2E runs.
           proxy.on('proxyReq', (proxyRequest) => {
-            proxyRequest.removeHeader('origin');
+            proxyRequest.setHeader('origin', 'http://127.0.0.1:4000');
           });
         },
       },

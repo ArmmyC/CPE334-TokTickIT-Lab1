@@ -227,6 +227,6 @@ Store real screenshots only under:
 - `artifacts/lab-03/screenshots/staff-ticket-detail/`
 - `artifacts/lab-03/screenshots/user-management/`
 
-The Issue #49 verification run on 2026-09-18 passed all 15 E2E tests across the three reference viewports. Screenshots in each directory were visually inspected after the run, and the E2E suite reported no horizontal overflow on the covered major screens.
+The Issue #49 verification run on 2026-09-18 passed all 21 E2E tests across the three reference viewports, including the retained Lab 2 Requester regression flow and the Staff error-state flow. Screenshots in each directory were visually inspected after the run, and the E2E suite reported no horizontal overflow on the covered major screens.
 
 The final Answer Sheet references these screenshots and includes a short description of what each proves. The screenshots and Answer Sheet are external evidence artifacts and are not used as a substitute for automated tests or backend authorization.

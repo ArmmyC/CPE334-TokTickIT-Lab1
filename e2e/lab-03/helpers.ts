@@ -22,19 +22,34 @@ export const SEEDED_ACCOUNTS = {
     initialPassword: 'TokTickIT-Lab3!Staff-Sr',
     establishedPassword: 'E2E-Staff-Password-1!',
   },
+  secondaryStaff: {
+    name: 'Nalinee Wong',
+    email: 'nalinee@example.test',
+    initialPassword: 'TokTickIT-Lab3!Staff-Nw',
+    establishedPassword: 'E2E-Staff-Password-2!',
+  },
   requester: {
     name: 'Ariya Anderson',
     email: 'ariya@example.test',
     initialPassword: 'TokTickIT-Lab3!User-1-Aa',
     establishedPassword: 'E2E-Requester-Password-1!',
   },
+  secondaryRequester: {
+    name: 'Narin Chai',
+    email: 'narin@example.test',
+    initialPassword: 'TokTickIT-Lab3!User-2-Aa',
+    establishedPassword: 'E2E-Requester-Password-2!',
+  },
 } satisfies Record<string, SeededAccount>;
 
 async function waitForLoginResult(page: Page): Promise<void> {
-  await Promise.race([
-    page.waitForURL(/\/(?:change-password|home|tickets)$/, { timeout: 15_000 }),
-    page.getByRole('alert').filter({ hasText: /Email or password is incorrect\./ }).waitFor({ state: 'visible', timeout: 15_000 }),
-  ].map((operation) => operation.catch(() => undefined)));
+  await expect.poll(
+    async () => {
+      if (/\/(?:change-password|home|tickets)$/.test(new URL(page.url()).pathname)) return true;
+      return page.getByRole('alert').filter({ hasText: /Email or password is incorrect\./ }).isVisible();
+    },
+    { timeout: 15_000, message: 'Login should redirect or show the safe authentication failure.' },
+  ).toBe(true);
 }
 
 async function submitLogin(page: Page, email: string, password: string): Promise<void> {
@@ -71,6 +86,24 @@ export async function signInWithSeededAccount(page: Page, account: SeededAccount
   }
 }
 
+export type AuthenticatedUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+};
+
+export async function getAuthenticatedUser(page: Page): Promise<AuthenticatedUser> {
+  const response = await page.request.get('/api/auth/me');
+  expect(response.ok()).toBe(true);
+  const body = await response.json() as { user?: Partial<AuthenticatedUser> };
+  expect(body.user?.id).toEqual(expect.any(Number));
+  expect(body.user?.name).toEqual(expect.any(String));
+  expect(body.user?.email).toEqual(expect.any(String));
+  expect(body.user?.role).toEqual(expect.any(String));
+  return body.user as AuthenticatedUser;
+}
+
 export async function expectAnyVisible(locator: Locator, message: string): Promise<void> {
   await expect.poll(
     async () => {
@@ -100,11 +133,12 @@ export async function saveEvidenceScreenshot(
   group: 'authentication' | 'staff-queue' | 'staff-ticket-detail' | 'user-management',
   projectName: string,
   state: string,
+  options: { fullPage?: boolean } = {},
 ): Promise<void> {
   const directory = path.resolve('artifacts/lab-03/screenshots', group);
   await mkdir(directory, { recursive: true });
   await page.screenshot({
     path: path.join(directory, `${projectName}-${state}.png`),
-    fullPage: true,
+    fullPage: options.fullPage ?? true,
   });
 }

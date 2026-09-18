@@ -66,9 +66,9 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 | REG-01 | Migration/regression | BR-17, BR-18, AC-05 | Lab 2 data migration | Existing records and ownership survive the migration | `server/tests/lab-03/migration.test.ts` | Pass |
 | REG-02 | Migration/regression | FR-11, FR-12, FR-13, AC-08 | Lab 2 Requester regression | Existing Ticket and Attachment behavior passes under authenticated identity | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/my-tickets.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts`, `server/tests/lab-02/attachments.api.test.ts` | Pass |
 | E2E-01 | E2E | AC-01, AC-02, AC-03, AC-04, AC-22, AC-23 | Authentication flow | Valid and invalid login, inactive account, first password change, role display, logout, direct block, and responsive states pass | `e2e/lab-03/authentication.spec.ts` | Pass |
-| E2E-02 | E2E | AC-10, AC-13, AC-14, AC-15, AC-16, AC-22, AC-23 | IT Staff flow | Seeded queue, search, filter, sort, pagination, detail, ownership, priority, status, comments, notes, Attachments, authorization, and responsive states pass | `e2e/lab-03/staff-ticket-flow.spec.ts` | Pass |
-| E2E-03 | E2E | AC-14, AC-18, AC-19, AC-20, AC-21, AC-22, AC-23 | Administrator flow | User list, search, filter, create, edit, password change, safety guards, protected Ticket visibility with IT Priority edit, forbidden Staff mutations, and responsive states pass | `e2e/lab-03/user-administration.spec.ts` | Pass |
-| E2E-04 | E2E | AC-08, AC-09, AC-22, AC-23 | Requester flow | Authenticated Requester opens an owned Ticket, preserves Lab 2 Ticket and Attachment behavior, adds a Public Comment, indicates Problem Appears Resolved, confirms formal status remains unchanged, and completes the responsive checks | `e2e/lab-03/requester-ticket-flow.spec.ts` | Pass |
+| E2E-02 | E2E | AC-10, AC-13, AC-14, AC-15, AC-16, AC-22, AC-23 | IT Staff flow | Seeded and newly created queue records, search, filters, sort, real pagination, detail, claim and reassignment, priority, status, comments, notes, read-only Attachments and resolution continuity, retryable failures, authorization, and responsive states pass | `e2e/lab-03/staff-ticket-flow.spec.ts` | Pass |
+| E2E-03 | E2E | AC-14, AC-18, AC-19, AC-20, AC-21, AC-22, AC-23 | Administrator flow | User list, search, filter, create, email and role edit, password reset and first-login change, self-deactivation safety feedback, protected Ticket visibility with IT Priority edit, forbidden Staff mutations, and responsive states pass. Last-active-Administrator protection remains covered by the API suite because the UI correctly blocks self-deactivation first | `e2e/lab-03/user-administration.spec.ts` | Pass |
+| E2E-04 | E2E | AC-08, AC-09, AC-22, AC-23 | Requester flow | Authenticated Requester opens an owned Ticket, preserves Lab 2 Ticket and Attachment behavior, adds a Public Comment, indicates Problem Appears Resolved, confirms formal status remains unchanged, rejects a second Requester and foreign Attachment access, and completes the responsive checks | `e2e/lab-03/requester-ticket-flow.spec.ts` | Pass |
 
 ## 3. Acceptance-Criterion Traceability
 
@@ -142,7 +142,7 @@ Verification completed on 2026-09-18 from branch `feature/7-lab3-e2e-visual`:
 - `npm run test:lab3:migration`, 1 test passed.
 - `npm test`, 17 server test files with 140 tests and 11 client test files with 76 tests passed.
 - `npm run build`, server TypeScript and client Vite production build passed.
-- `npx playwright test`, 15 tests passed across desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`.
+- `npx playwright test`, 21 tests passed across desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`, including the retained Lab 2 Requester regression flow and the additional Staff error-state flow.
 - E2E evidence was visually inspected, and the no-horizontal-overflow assertion passed for each covered major screen.
 
 The local Docker test database used the existing healthy `toktickit` Compose project because creating another Compose network exceeded the host address pool.

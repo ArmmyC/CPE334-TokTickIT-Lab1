@@ -21,8 +21,10 @@ test('Administrator can manage users and non-Administrators are forbidden', asyn
   const createdName = `E2E Managed ${projectName}`;
   const updatedName = `E2E Updated ${projectName}`;
   const createdEmail = `managed-${runToken}@example.test`;
+  const updatedEmail = `managed-updated-${runToken}@example.test`;
   const initialPassword = `E2E-Managed-${projectName}-1!`;
   const resetPassword = `E2E-Reset-${projectName}-1!`;
+  const establishedPassword = `E2E-Established-${projectName}-1!`;
 
   await signInWithSeededAccount(page, SEEDED_ACCOUNTS.administrator);
   if (projectName === 'mobile') {
@@ -80,12 +82,15 @@ test('Administrator can manage users and non-Administrators are forbidden', asyn
   await createdRow.getByRole('button', { name: `Edit ${createdName}`, exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Edit User', exact: true })).toBeVisible();
   await page.getByLabel('Name', { exact: true }).fill(updatedName);
-  await page.getByLabel('Active', { exact: true }).selectOption('false');
+  await page.getByLabel('Email', { exact: true }).fill(updatedEmail);
+  await page.getByLabel('Role', { exact: true }).selectOption('IT_STAFF');
+  await page.getByLabel('Active', { exact: true }).selectOption('true');
   await page.getByRole('button', { name: 'Save User', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'User updated successfully.' })).toBeVisible();
   await expect(page.getByText(updatedName, { exact: true })).toBeVisible();
-  const updatedRow = page.locator('tr:visible').filter({ hasText: createdEmail });
-  await expect(updatedRow.getByText('Inactive', { exact: true })).toBeVisible();
+  await expect(page.getByText(updatedEmail, { exact: true })).toBeVisible();
+  const updatedRow = page.locator('tr:visible').filter({ hasText: updatedEmail });
+  await expect(updatedRow.getByText('IT Staff', { exact: true })).toBeVisible();
   await updatedRow.getByRole('button', { name: `Edit ${updatedName}`, exact: true }).click();
   await page.getByRole('button', { name: 'Set New Initial Password', exact: true }).click();
   await page.getByLabel('New Initial Password', { exact: true }).fill(resetPassword);
@@ -97,6 +102,34 @@ test('Administrator can manage users and non-Administrators are forbidden', asyn
   await assertNoHorizontalOverflow(page, 'Administrator User Management edit');
 
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Log out', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await signInWithSeededAccount(page, {
+    name: updatedName,
+    email: updatedEmail,
+    initialPassword: resetPassword,
+    establishedPassword,
+  });
+  await expect(page).toHaveURL(/\/home$/);
+  if (projectName === 'mobile') {
+    await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  }
+  await expect(page.getByRole('link', { name: 'Ticket Queue', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Log out', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await signInWithSeededAccount(page, SEEDED_ACCOUNTS.administrator);
+  await page.goto('/admin/tickets/1');
+  await expect(page.getByRole('heading', { name: 'Administrator Ticket View', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Claim Ticket', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Update Status', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Post Public Comment', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save Internal Note', exact: true })).toHaveCount(0);
+  await page.getByLabel('IT Priority', { exact: true }).selectOption('LOW');
+  await page.getByRole('button', { name: 'Save IT Priority', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'IT Priority updated.' })).toBeVisible();
+
+  await page.goto('/admin/users');
   const administratorRow = page.locator('tr:visible').filter({ hasText: SEEDED_ACCOUNTS.administrator.email });
   await administratorRow.getByRole('button', { name: `Edit ${SEEDED_ACCOUNTS.administrator.name}`, exact: true }).click();
   await page.getByLabel('Active', { exact: true }).selectOption('false');
