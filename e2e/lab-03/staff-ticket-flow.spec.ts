@@ -9,6 +9,8 @@ import {
   signInWithSeededAccount,
 } from './helpers';
 
+test.describe.configure({ timeout: 120_000 });
+
 function pdfFile(name: string) {
   return {
     name,
@@ -83,7 +85,6 @@ test.beforeEach(() => {
 });
 
 test('IT Staff can paginate, sort, search, reassign, and operate a Ticket Detail safely', async ({ page, browser }, testInfo) => {
-  test.setTimeout(120_000);
   const projectName = testInfo.project.name;
   const runToken = `${Date.now()}-${projectName}`;
   const createdTicket = await createRequesterTickets(page, runToken);
@@ -104,17 +105,22 @@ test('IT Staff can paginate, sort, search, reassign, and operate a Ticket Detail
   await page.getByRole('link', { name: 'Ticket Queue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Staff Ticket Queue', exact: true })).toBeVisible();
   const seededTicketNumber = page.locator('a:visible').filter({ hasText: /^TKT-2026-000001$/ }).first();
+  const visibleTicketLinks = page.locator('a:visible').filter({ hasText: /^TKT-2026-\d{6}$/ });
   await page.getByLabel('Tickets per page', { exact: true }).selectOption('10');
   await expect(page.getByText(/11 Tickets found\. Page 1 of 2\./)).toBeVisible();
+  await expect(visibleTicketLinks).toHaveCount(10);
+  const firstPageTicketNumbers = await visibleTicketLinks.allTextContents();
   await expect(page.getByRole('navigation', { name: 'Staff Ticket Queue pagination' })).toBeVisible();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.getByText(/11 Tickets found\. Page 2 of 2\./)).toBeVisible();
+  await expect(visibleTicketLinks).toHaveCount(1);
+  const secondPageTicketNumbers = await visibleTicketLinks.allTextContents();
+  expect(secondPageTicketNumbers.some((ticketNumber) => !firstPageTicketNumbers.includes(ticketNumber))).toBe(true);
   await page.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(page.getByText(/11 Tickets found\. Page 1 of 2\./)).toBeVisible();
   await page.getByLabel('Sort By', { exact: true }).selectOption('ticketNumber');
   await page.getByLabel('Sort Order', { exact: true }).selectOption('asc');
   await expect(seededTicketNumber).toBeVisible();
-  const visibleTicketLinks = page.locator('a:visible').filter({ hasText: /^TKT-2026-\d{6}$/ });
   await expect(visibleTicketLinks.first()).toHaveText('TKT-2026-000001');
   await saveEvidenceScreenshot(page, 'staff-queue', projectName, 'seeded-queue', { fullPage: projectName !== 'mobile' });
   await assertNoHorizontalOverflow(page, 'Staff Ticket Queue seeded');
@@ -181,6 +187,14 @@ test('IT Staff can paginate, sort, search, reassign, and operate a Ticket Detail
   await expect(page.getByRole('status').filter({ hasText: 'Internal Note saved.' })).toBeVisible();
   await expect(page.getByText(internalNote, { exact: true })).toBeVisible();
   await expect(page.getByText('OPEN', { exact: true }).first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Staff Ticket Detail', exact: true })).toBeVisible();
+  await expect(headerFields.getByText(SEEDED_ACCOUNTS.secondaryStaff.name, { exact: true })).toBeVisible();
+  await expect(headerFields.locator(':scope > div').filter({ hasText: 'Requested Priority' }).locator('.ticket-priority-badge')).toHaveText('HIGH');
+  await expect(page.getByLabel('IT Priority', { exact: true })).toHaveValue('MEDIUM');
+  await expect(page.getByLabel('Current Status', { exact: true })).toHaveValue('OPEN');
+  await expect(page.getByText(publicComment, { exact: true })).toBeVisible();
+  await expect(page.getByText(internalNote, { exact: true })).toBeVisible();
   await saveEvidenceScreenshot(page, 'staff-ticket-detail', projectName, 'operational-detail');
   await assertNoHorizontalOverflow(page, 'Staff Ticket Detail operational');
 

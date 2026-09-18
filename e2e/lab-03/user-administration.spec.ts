@@ -130,6 +130,18 @@ test('Administrator can manage users and non-Administrators are forbidden', asyn
   await expect(page.getByRole('status').filter({ hasText: 'IT Priority updated.' })).toBeVisible();
 
   await page.goto('/admin/users');
+  const managedUserRow = page.locator('tr:visible').filter({ hasText: updatedEmail });
+  await managedUserRow.getByRole('button', { name: `Edit ${updatedName}`, exact: true }).click();
+  await page.getByLabel('Active', { exact: true }).selectOption('false');
+  await page.getByRole('button', { name: 'Save User', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'User updated successfully.' })).toBeVisible();
+  await expect(page.locator('tr:visible').filter({ hasText: updatedEmail }).getByText('Inactive', { exact: true })).toBeVisible();
+  const inactiveManagedUserRow = page.locator('tr:visible').filter({ hasText: updatedEmail });
+  await inactiveManagedUserRow.getByRole('button', { name: `Edit ${updatedName}`, exact: true }).click();
+  await page.getByLabel('Active', { exact: true }).selectOption('true');
+  await page.getByRole('button', { name: 'Save User', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'User updated successfully.' })).toBeVisible();
+  await expect(page.locator('tr:visible').filter({ hasText: updatedEmail }).getByText('Active', { exact: true })).toBeVisible();
   const administratorRow = page.locator('tr:visible').filter({ hasText: SEEDED_ACCOUNTS.administrator.email });
   await administratorRow.getByRole('button', { name: `Edit ${SEEDED_ACCOUNTS.administrator.name}`, exact: true }).click();
   await page.getByLabel('Active', { exact: true }).selectOption('false');
