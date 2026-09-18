@@ -16,6 +16,7 @@ import { MyTicketsPage } from './MyTicketsPage';
 import { StaffTicketQueuePage } from './StaffTicketQueuePage';
 import { StaffTicketDetailPage } from './StaffTicketDetailPage';
 import { TicketDetailPage } from './TicketDetailPage';
+import { UserManagementPage } from './UserManagementPage';
 
 type HealthState = 'idle' | 'checking' | 'online' | 'offline';
 type CategoryState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -178,6 +179,7 @@ function ApplicationShell() {
 
   const isRequester = user.role === 'REQUESTER';
   const isStaff = user.role === 'IT_STAFF';
+  const isAdministrator = user.role === 'ADMINISTRATOR';
   const roleLabel: Record<AuthUserRole, string> = {
     REQUESTER: 'Requester',
     IT_STAFF: 'IT Staff',
@@ -225,6 +227,9 @@ function ApplicationShell() {
             )}
             {isStaff && (
               <NavLink to="/staff/tickets" className={navLinkClass} onClick={() => setMenuOpen(false)}>Ticket Queue</NavLink>
+            )}
+            {isAdministrator && (
+              <NavLink to="/admin/users" className={navLinkClass} onClick={() => setMenuOpen(false)}>User Management</NavLink>
             )}
           </nav>
           <div className="shell-user">
@@ -282,6 +287,20 @@ function StaffOnly() {
         <p className="eyebrow">TokTickIT / Access</p>
         <h1 id="staff-access-title">IT Staff access is required</h1>
         <p>This destination is available only to IT Staff accounts.</p>
+      </section>
+    );
+  }
+  return <Outlet />;
+}
+
+function AdministratorOnly() {
+  const { user } = useAuth();
+  if (!user || user.role !== 'ADMINISTRATOR') {
+    return (
+      <section className="placeholder-page" aria-labelledby="administrator-access-title">
+        <p className="eyebrow">TokTickIT / Access</p>
+        <h1 id="administrator-access-title">Administrator access is required</h1>
+        <p>This destination is available only to Administrator accounts.</p>
       </section>
     );
   }
@@ -352,6 +371,9 @@ function RoutedApplication() {
         </Route>
         <Route element={<StaffOnly />}>
           <Route path="/staff/tickets" element={<StaffTicketQueuePage />} />
+        </Route>
+        <Route element={<AdministratorOnly />}>
+          <Route path="/admin/users" element={<UserManagementPage />} />
         </Route>
         <Route element={<StaffTicketDetailAccess />}>
           <Route path="/staff/tickets/:ticketId" element={<StaffTicketDetailRoute />} />

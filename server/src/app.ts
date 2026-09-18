@@ -18,6 +18,21 @@ import {
 import { createAuthRouter } from './auth/routes.js';
 import type { AuthDatabase } from './auth/types.js';
 import {
+  AdminUserConflictError,
+  AdminUserNotFoundError,
+  AdminUserValidationError,
+  createAdminUser,
+  listAdminUsers,
+  parseAdminUserId,
+  parseCreateAdminUserPayload,
+  parseInitialPasswordPayload,
+  parseAdminUserQuery,
+  parseUpdateAdminUserPayload,
+  resetAdminUserPassword,
+  updateAdminUser,
+  type AdminUserDatabase,
+} from './admin/users.js';
+import {
   buildStaffQueueOrderBy,
   buildStaffQueueWhere,
   parseStaffQueueQuery,
@@ -254,7 +269,8 @@ export type TicketApiDatabase = {
 };
 
 export type ApplicationApiDatabase = CategoryApiDatabase &
-  Partial<RelatedSystemApiDatabase & TicketApiDatabase & AuthDatabase>;
+  Partial<RelatedSystemApiDatabase & TicketApiDatabase & AuthDatabase> &
+  Partial<AdminUserDatabase>;
 
 type CreateTicketInput = {
   categoryId: number;
@@ -628,6 +644,42 @@ function sendStaffTicketValidationError(response: Response, error: StaffTicketVa
   });
 }
 
+function sendAdminUserValidationError(response: Response, error: AdminUserValidationError): void {
+  response.status(400).json({
+    error: 'Please correct the Administrator User fields.',
+    code: 'VALIDATION_FAILED',
+    fieldErrors: error.fieldErrors,
+  });
+}
+
+function sendAdminUserFailure(response: Response, error: unknown, operation: string): void {
+  if (error instanceof AdminUserValidationError) {
+    sendAdminUserValidationError(response, error);
+    return;
+  }
+  if (error instanceof AdminUserConflictError || isUniqueConflict(error)) {
+    response.status(409).json({
+      error: error instanceof AdminUserConflictError
+        ? error.message
+        : 'A User with that email already exists.',
+      code: 'CONFLICT',
+    });
+    return;
+  }
+  if (error instanceof AdminUserNotFoundError) {
+    response.status(404).json({
+      error: error.message,
+      code: 'USER_NOT_FOUND',
+    });
+    return;
+  }
+  console.error(`TokTickIT administrator User ${operation} API error:`, error);
+  response.status(500).json({
+    error: `Unable to ${operation}.`,
+    code: 'UNEXPECTED_ERROR',
+  });
+}
+
 function sendStaffTicketOperationFailure(
   response: Response,
   error: unknown,
@@ -696,6 +748,75 @@ export function createApp(
   });
 
   app.use('/api', requireNormalAccess(database));
+
+  app.get('/api/admin/users', requireRole(database, ['ADMINISTRATOR']), async (request, response) => {
+    try {
+      const query = parseAdminUserQuery(request.query);
+      const adminDatabase = database as unknown as AdminUserDatabase;
+      if (!adminDatabase.user?.findMany) {
+        throw new Error('Administrator User database access is unavailable.');
+      }
+      response.status(200).json(await listAdminUsers(adminDatabase, query));
+    } catch (error) {
+      sendAdminUserFailure(response, error, 'list administrator users');
+    }
+  });
+
+  app.post(
+    '/api/admin/users',
+    requireRole(database, ['ADMINISTRATOR']),
+    requireCsrf(),
+    async (request, response) => {
+      try {
+        const input = parseCreateAdminUserPayload(request.body);
+        const adminDatabase = database as unknown as AdminUserDatabase;
+        response.status(201).json(await createAdminUser(adminDatabase, input));
+      } catch (error) {
+        sendAdminUserFailure(response, error, 'create administrator user');
+      }
+    }
+  );
+
+  app.patch(
+    '/api/admin/users/:userId',
+    requireRole(database, ['ADMINISTRATOR']),
+    requireCsrf(),
+    async (request, response) => {
+      try {
+        if (!request.auth) {
+          sendAuthenticationRequired(response);
+          return;
+        }
+        const userId = parseAdminUserId(request.params.userId);
+        const input = parseUpdateAdminUserPayload(request.body);
+        const adminDatabase = database as unknown as AdminUserDatabase;
+        response.status(200).json(await updateAdminUser(
+          adminDatabase,
+          userId,
+          input,
+          request.auth.user.id,
+        ));
+      } catch (error) {
+        sendAdminUserFailure(response, error, 'update administrator user');
+      }
+    },
+  );
+
+  app.post(
+    '/api/admin/users/:userId/initial-password',
+    requireRole(database, ['ADMINISTRATOR']),
+    requireCsrf(),
+    async (request, response) => {
+      try {
+        const userId = parseAdminUserId(request.params.userId);
+        const input = parseInitialPasswordPayload(request.body);
+        const adminDatabase = database as unknown as AdminUserDatabase;
+        response.status(200).json(await resetAdminUserPassword(adminDatabase, userId, input));
+      } catch (error) {
+        sendAdminUserFailure(response, error, 'set administrator initial password');
+      }
+    },
+  );
 
   app.get('/api/staff/tickets', requireRole(database, ['IT_STAFF']), async (request, response) => {
     try {
