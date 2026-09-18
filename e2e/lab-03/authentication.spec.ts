@@ -35,6 +35,7 @@ test('users complete mandatory first login, see role navigation, and lose access
   }
   await page.getByRole('link', { name: 'User Management', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'User Management', exact: true })).toBeVisible();
+  await expect(page.locator('td[data-label="Email"]:visible').filter({ hasText: 'anong@example.test' })).toBeVisible();
   await saveEvidenceScreenshot(page, 'authentication', projectName, 'administrator-shell');
   await assertNoHorizontalOverflow(page, 'Administrator User Management shell');
 
