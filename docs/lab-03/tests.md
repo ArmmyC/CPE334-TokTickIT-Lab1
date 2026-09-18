@@ -22,8 +22,8 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 | UNIT-01 | Unit | BR-04, BR-05, AC-01 | Password validation and hashing | Valid boundaries pass, invalid rules fail, the fixed `scrypt` parameters are used, hashes differ from plaintext, and verification succeeds | `server/tests/lab-03/auth.api.test.ts` | Pass |
 | UNIT-02 | Unit | BR-08, AC-04 | Session expiry and revocation | The eight-hour inactivity deadline slides on valid activity, the 24-hour absolute deadline never slides, and expired or revoked tokens cannot authenticate | `server/tests/lab-03/auth.api.test.ts` | Pass |
 | UNIT-03 | Unit | BR-09 | CSRF and Origin validation | Missing or mismatched mutation protection fails safely | `server/tests/lab-03/auth.api.test.ts` | Pass |
-| UNIT-04 | Unit | BR-25, AC-15 | Status transition matrix | Only documented transitions are accepted | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| UNIT-05 | Unit | BR-37, BR-38, AC-20 | Administrator safety rules | Self-deactivation and last-active-Administrator removal fail | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
+| UNIT-04 | Unit | BR-25, AC-15 | Status transition matrix | Only documented transitions are accepted | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| UNIT-05 | Unit | BR-37, BR-38, AC-20 | Administrator safety rules | Self-deactivation and last-active-Administrator removal fail | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
 | UNIT-06 | Unit | BR-45, AC-02 | Login-attempt limiter | After five failed attempts within the window, the next attempt is throttled for 15 minutes, successful login clears the limiter, and no permanent account lock is created | `server/tests/lab-03/auth.api.test.ts` | Pass |
 | MIG-01 | Migration | BR-17, BR-18, AC-03, AC-05 | DevelopmentRequester migration | IDs, Ticket ownership, Attachments, active state, and counts survive conversion. Each migrated Requester can use the documented local initial password, is restricted to password change, and gains normal access only after changing it | `server/tests/lab-03/migration.test.ts` | Pass |
 | SEED-01 | Unit or integration | BR-40, BR-41, BR-42, AC-06 | Idempotent Lab 3 seed | Required active and inactive role counts and workflow records exist without duplicates | `server/tests/lab-03/seed.test.ts` | Pass |
@@ -32,43 +32,43 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 | API-03 | API | FR-05, AC-03 | Initial password restriction | Restricted session can change password but cannot enter normal APIs | `server/tests/lab-03/auth.api.test.ts` | Pass |
 | API-04 | API | FR-04, AC-04 | Logout | Session is revoked, cookies are cleared, and direct protected access fails | `server/tests/lab-03/auth.api.test.ts` | Pass |
 | API-05 | API | FR-06, BR-07 | Password change | Valid change clears requirement and revokes other sessions, invalid boundaries fail | `server/tests/lab-03/auth.api.test.ts` | Pass |
-| API-06 | API | FR-07, BR-12, AC-12 | Role middleware | Requester, Staff, Administrator, unauthenticated, and restricted sessions receive correct status | `server/tests/lab-03/authorization.api.test.ts` | Planned |
-| API-07 | API | FR-09, BR-19, AC-07 | Authenticated ownership | Client requesterId or userId cannot select another identity | `server/tests/lab-03/authorization.api.test.ts` | Planned |
-| API-08 | API | FR-11, AC-08 | Authenticated Ticket creation | Ticket uses session Requester, copies requested priority, and starts NEW | `server/tests/lab-02/create-ticket.api.test.ts` | Planned |
-| API-09 | API | FR-12, AC-08 | Authenticated owned list | Existing search, filters, sorting, pagination, and safe ownership continue | `server/tests/lab-02/my-tickets.api.test.ts` | Planned |
-| API-10 | API | FR-13, BR-32, AC-08 | Authenticated Attachment lifecycle | Upload, metadata, download, preview, soft removal, and foreign rejection continue | `server/tests/lab-02/attachments.api.test.ts` | Planned |
-| API-11 | API | FR-14, AC-09 | Requester comments and resolution | Own Requester can append Public Comment and indicate resolution without formal status change | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| API-12 | API | FR-15, AC-10 | Staff Queue query | Search, filters, sorting, pagination, owner, priority, status, and metadata match contract | `server/tests/lab-03/staff-queue.api.test.ts` | Planned |
-| API-13 | API | FR-15, AC-11 | Staff Queue invalid queries | Invalid values return field errors without silent coercion | `server/tests/lab-03/staff-queue.api.test.ts` | Planned |
-| API-14 | API | FR-16, AC-13, AC-16 | Staff and Administrator Ticket Detail | Staff sees operational data, Attachments, comments, notes, and resolution indication. Administrator sees permitted read-only content without Staff mutations | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| API-15 | API | FR-17, AC-13 | Claim, assign, reassign | Active eligible owner succeeds, inactive or invalid role fails, unassigned is supported | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| API-16 | API | FR-18, AC-14 | IT Priority | IT Staff or Administrator changes IT Priority without changing Requested Priority, and other Administrator Ticket mutations remain forbidden | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| API-17 | API | FR-18, AC-15 | Status transitions | Valid transitions save, invalid transitions and missing confirmations fail safely | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| API-18 | API | FR-19, AC-16, AC-17 | Comments and Notes | Visibility, authorship, append-only behavior, blank rejection, length boundaries, and safe text hold | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| API-19 | API | FR-20, FR-21, AC-18 | Administrator list | Name or email search and one role filter return safe User data | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| API-20 | API | FR-22, FR-23, AC-19 | User create and edit | Basic fields, one role, activation state, duplicate email, and validation behave correctly | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| API-21 | API | FR-24, BR-39, AC-21 | Administrator initial password | New password marks target User and revokes sessions | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| API-22 | API | FR-25, AC-20 | Administrator safety | Self-deactivation and last active Administrator protection hold under direct API calls | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| UI-01 | UI component | FR-01, FR-02, AC-01, AC-02 | Login screen | Validation, busy, safe failure, inactive account feedback, and successful navigation work | `client/tests/lab-03/Login.test.tsx` | Planned |
-| UI-02 | UI component | FR-05, FR-06, AC-03 | Change Password screen | Rules, confirmation, busy, success, and failure behavior work | `client/tests/lab-03/ChangePassword.test.tsx` | Planned |
-| UI-03 | UI component | FR-10, AC-04, AC-07 | Authenticated shell | User and role display, permitted nav, logout, and stale context clearing work | `client/tests/lab-03/Login.test.tsx` | Planned |
-| UI-04 | UI regression | FR-11, FR-12, FR-13, AC-08 | Requester regression | Create, My Tickets, Detail, Attachments, and no-selector flow continue | `client/tests/lab-02/CreateTicket.test.tsx`, `client/tests/lab-02/MyTickets.test.tsx`, `client/tests/lab-02/RequesterTicketDetail.test.tsx`, `client/tests/lab-02/AttachmentSection.test.tsx` | Planned |
-| UI-05 | UI component | FR-14, AC-09 | Requester comments and resolution | Public comment form and resolution indication are clear and safe | `client/tests/lab-02/RequesterTicketDetail.test.tsx` | Planned |
-| UI-06 | UI component | FR-15, AC-10, AC-11, AC-12 | Staff Queue | Controls, table/cards, ownership, badges, loading, empty, no-results, forbidden, and failures work | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Planned |
-| UI-07 | UI component | FR-16, FR-18, FR-19, AC-13, AC-14, AC-15, AC-16 | Staff and Administrator Ticket Detail | Staff claim, assignment, priority, status, comments, notes, Attachments, and resolution indication work. Administrator receives read-only Ticket communication and only the permitted IT Priority edit | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
-| UI-08 | UI component | FR-20, FR-21, FR-22, FR-23, FR-24, AC-18, AC-19, AC-20, AC-21 | User Management | List, search, role filter, create, edit, password action, safety feedback, and forbidden state work | `client/tests/lab-03/UserManagement.test.tsx` | Planned |
-| STYLE-01 | UI style | FR-27, AC-22 | Zen Green controls | Tokens, labels, required markers, focus, badges, editable/read-only fields, and busy controls match `ui-spec.md` | `client/tests/lab-03/Login.test.tsx`, `client/tests/lab-03/StaffTicketQueue.test.tsx`, `client/tests/lab-03/StaffTicketDetail.test.tsx`, `client/tests/lab-03/UserManagement.test.tsx`, `client/tests/lab-02/VisualStyle.test.ts` | Planned |
-| RESP-01 | Responsive | FR-26, FR-27, AC-22 | Auth and shell responsive behavior | Login, Change Password, and role navigation remain readable at all reference viewports | `e2e/lab-03/authentication.spec.ts` | Planned |
-| RESP-02 | Responsive | FR-15, AC-10, AC-22 | Staff Queue responsive behavior | Table-to-card representation has no clipping or page horizontal overflow | `e2e/lab-03/staff-ticket-flow.spec.ts` | Planned |
-| RESP-03 | Responsive | FR-16, FR-20, AC-22 | Staff Detail and User Management responsive behavior | Operational cards, comments, notes, forms, and actions remain usable | `e2e/lab-03/staff-ticket-flow.spec.ts`, `e2e/lab-03/user-administration.spec.ts` | Planned |
-| SEC-01 | Security | BR-10, AC-01, AC-02, AC-04 | Secret and safe-error audit | No password or session secret leaks and generic failures remain safe | `server/tests/lab-03/auth.api.test.ts`, `server/tests/lab-03/authorization.api.test.ts` | Planned |
-| SEC-02 | Security | BR-12, BR-16, AC-07, AC-12, AC-16 | Direct authorization bypasses | Hidden controls are bypassed through direct API calls and still fail | `server/tests/lab-03/authorization.api.test.ts`, `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
+| API-06 | API | FR-07, BR-12, AC-12 | Role middleware | Requester, Staff, Administrator, unauthenticated, and restricted sessions receive correct status | `server/tests/lab-03/authorization.api.test.ts` | Pass |
+| API-07 | API | FR-09, BR-19, AC-07 | Authenticated ownership | Client requesterId or userId cannot select another identity | `server/tests/lab-03/authorization.api.test.ts` | Pass |
+| API-08 | API | FR-11, AC-08 | Authenticated Ticket creation | Ticket uses session Requester, copies requested priority, and starts NEW | `server/tests/lab-02/create-ticket.api.test.ts` | Pass |
+| API-09 | API | FR-12, AC-08 | Authenticated owned list | Existing search, filters, sorting, pagination, and safe ownership continue | `server/tests/lab-02/my-tickets.api.test.ts` | Pass |
+| API-10 | API | FR-13, BR-32, AC-08 | Authenticated Attachment lifecycle | Upload, metadata, download, preview, soft removal, and foreign rejection continue | `server/tests/lab-02/attachments.api.test.ts` | Pass |
+| API-11 | API | FR-14, AC-09 | Requester comments and resolution | Own Requester can append Public Comment and indicate resolution without formal status change | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
+| API-12 | API | FR-15, AC-10 | Staff Queue query | Search, filters, sorting, pagination, owner, priority, status, and metadata match contract | `server/tests/lab-03/staff-queue.api.test.ts` | Pass |
+| API-13 | API | FR-15, AC-11 | Staff Queue invalid queries | Invalid values return field errors without silent coercion | `server/tests/lab-03/staff-queue.api.test.ts` | Pass |
+| API-14 | API | FR-16, AC-13, AC-16 | Staff and Administrator Ticket Detail | Staff sees operational data, Attachments, comments, notes, and resolution indication. Administrator sees permitted read-only content without Staff mutations | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| API-15 | API | FR-17, AC-13 | Claim, assign, reassign | Active eligible owner succeeds, inactive or invalid role fails, unassigned is supported | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| API-16 | API | FR-18, AC-14 | IT Priority | IT Staff or Administrator changes IT Priority without changing Requested Priority, and other Administrator Ticket mutations remain forbidden | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| API-17 | API | FR-18, AC-15 | Status transitions | Valid transitions save, invalid transitions and missing confirmations fail safely | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| API-18 | API | FR-19, AC-16, AC-17 | Comments and Notes | Visibility, authorship, append-only behavior, blank rejection, length boundaries, and safe text hold | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
+| API-19 | API | FR-20, FR-21, AC-18 | Administrator list | Name or email search and one role filter return safe User data | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| API-20 | API | FR-22, FR-23, AC-19 | User create and edit | Basic fields, one role, activation state, duplicate email, and validation behave correctly | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| API-21 | API | FR-24, BR-39, AC-21 | Administrator initial password | New password marks target User and revokes sessions | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| API-22 | API | FR-25, AC-20 | Administrator safety | Self-deactivation and last active Administrator protection hold under direct API calls | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| UI-01 | UI component | FR-01, FR-02, AC-01, AC-02 | Login screen | Validation, busy, safe failure, inactive account feedback, and successful navigation work | `client/tests/lab-03/Login.test.tsx` | Pass |
+| UI-02 | UI component | FR-05, FR-06, AC-03 | Change Password screen | Rules, confirmation, busy, success, and failure behavior work | `client/tests/lab-03/ChangePassword.test.tsx` | Pass |
+| UI-03 | UI component | FR-10, AC-04, AC-07 | Authenticated shell | User and role display, permitted nav, logout, and stale context clearing work | `client/tests/lab-03/Login.test.tsx` | Pass |
+| UI-04 | UI regression | FR-11, FR-12, FR-13, AC-08 | Requester regression | Create, My Tickets, Detail, Attachments, and no-selector flow continue | `client/tests/lab-02/CreateTicket.test.tsx`, `client/tests/lab-02/MyTickets.test.tsx`, `client/tests/lab-02/RequesterTicketDetail.test.tsx`, `client/tests/lab-02/AttachmentSection.test.tsx` | Pass |
+| UI-05 | UI component | FR-14, AC-09 | Requester comments and resolution | Public comment form and resolution indication are clear and safe | `client/tests/lab-02/RequesterTicketDetail.test.tsx` | Pass |
+| UI-06 | UI component | FR-15, AC-10, AC-11, AC-12 | Staff Queue | Controls, table/cards, ownership, badges, loading, empty, no-results, forbidden, and failures work | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Pass |
+| UI-07 | UI component | FR-16, FR-18, FR-19, AC-13, AC-14, AC-15, AC-16 | Staff and Administrator Ticket Detail | Staff claim, assignment, priority, status, comments, notes, Attachments, and resolution indication work. Administrator receives read-only Ticket communication and only the permitted IT Priority edit | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Pass |
+| UI-08 | UI component | FR-20, FR-21, FR-22, FR-23, FR-24, AC-18, AC-19, AC-20, AC-21 | User Management | List, search, role filter, create, edit, password action, safety feedback, and forbidden state work | `client/tests/lab-03/UserManagement.test.tsx` | Pass |
+| STYLE-01 | UI style | FR-27, AC-22 | Zen Green controls | Tokens, labels, required markers, focus, badges, editable/read-only fields, and busy controls match `ui-spec.md` | `client/tests/lab-03/Login.test.tsx`, `client/tests/lab-03/StaffTicketQueue.test.tsx`, `client/tests/lab-03/StaffTicketDetail.test.tsx`, `client/tests/lab-03/UserManagement.test.tsx`, `client/tests/lab-02/VisualStyle.test.ts` | Pass |
+| RESP-01 | Responsive | FR-26, FR-27, AC-22 | Auth and shell responsive behavior | Login, Change Password, and role navigation remain readable at all reference viewports | `e2e/lab-03/authentication.spec.ts` | Pass |
+| RESP-02 | Responsive | FR-15, AC-10, AC-22 | Staff Queue responsive behavior | Table-to-card representation has no clipping or page horizontal overflow | `e2e/lab-03/staff-ticket-flow.spec.ts` | Pass |
+| RESP-03 | Responsive | FR-16, FR-20, AC-22 | Staff Detail and User Management responsive behavior | Operational cards, comments, notes, forms, and actions remain usable | `e2e/lab-03/staff-ticket-flow.spec.ts`, `e2e/lab-03/user-administration.spec.ts` | Pass |
+| SEC-01 | Security | BR-10, AC-01, AC-02, AC-04 | Secret and safe-error audit | No password or session secret leaks and generic failures remain safe | `server/tests/lab-03/auth.api.test.ts`, `server/tests/lab-03/authorization.api.test.ts` | Pass |
+| SEC-02 | Security | BR-12, BR-16, AC-07, AC-12, AC-16 | Direct authorization bypasses | Hidden controls are bypassed through direct API calls and still fail | `server/tests/lab-03/authorization.api.test.ts`, `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
 | REG-01 | Migration/regression | BR-17, BR-18, AC-05 | Lab 2 data migration | Existing records and ownership survive the migration | `server/tests/lab-03/migration.test.ts` | Pass |
-| REG-02 | Migration/regression | FR-11, FR-12, FR-13, AC-08 | Lab 2 Requester regression | Existing Ticket and Attachment behavior passes under authenticated identity | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/my-tickets.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts`, `server/tests/lab-02/attachments.api.test.ts` | Planned |
-| E2E-01 | E2E | AC-01, AC-02, AC-03, AC-04, AC-22, AC-23 | Authentication flow | Valid and invalid login, inactive account, first password change, role display, logout, direct block, and responsive states pass | `e2e/lab-03/authentication.spec.ts` | Planned |
-| E2E-02 | E2E | AC-10, AC-13, AC-14, AC-15, AC-16, AC-22, AC-23 | IT Staff flow | Seeded queue, search, filter, sort, pagination, detail, ownership, priority, status, comments, notes, Attachments, authorization, and responsive states pass | `e2e/lab-03/staff-ticket-flow.spec.ts` | Planned |
-| E2E-03 | E2E | AC-14, AC-18, AC-19, AC-20, AC-21, AC-22, AC-23 | Administrator flow | User list, search, filter, create, edit, password change, safety guards, protected Ticket visibility with IT Priority edit, forbidden Staff mutations, and responsive states pass | `e2e/lab-03/user-administration.spec.ts` | Planned |
-| E2E-04 | E2E | AC-08, AC-09, AC-22, AC-23 | Requester flow | Authenticated Requester opens an owned Ticket, preserves Lab 2 Ticket and Attachment behavior, adds a Public Comment, indicates Problem Appears Resolved, confirms formal status remains unchanged, and completes the responsive checks | `e2e/lab-03/requester-ticket-flow.spec.ts` | Planned |
+| REG-02 | Migration/regression | FR-11, FR-12, FR-13, AC-08 | Lab 2 Requester regression | Existing Ticket and Attachment behavior passes under authenticated identity | `server/tests/lab-02/create-ticket.api.test.ts`, `server/tests/lab-02/my-tickets.api.test.ts`, `server/tests/lab-02/ticket-detail.api.test.ts`, `server/tests/lab-02/attachments.api.test.ts` | Pass |
+| E2E-01 | E2E | AC-01, AC-02, AC-03, AC-04, AC-22, AC-23 | Authentication flow | Valid and invalid login, inactive account, first password change, role display, logout, direct block, and responsive states pass | `e2e/lab-03/authentication.spec.ts` | Pass |
+| E2E-02 | E2E | AC-10, AC-13, AC-14, AC-15, AC-16, AC-22, AC-23 | IT Staff flow | Seeded queue, search, filter, sort, pagination, detail, ownership, priority, status, comments, notes, Attachments, authorization, and responsive states pass | `e2e/lab-03/staff-ticket-flow.spec.ts` | Pass |
+| E2E-03 | E2E | AC-14, AC-18, AC-19, AC-20, AC-21, AC-22, AC-23 | Administrator flow | User list, search, filter, create, edit, password change, safety guards, protected Ticket visibility with IT Priority edit, forbidden Staff mutations, and responsive states pass | `e2e/lab-03/user-administration.spec.ts` | Pass |
+| E2E-04 | E2E | AC-08, AC-09, AC-22, AC-23 | Requester flow | Authenticated Requester opens an owned Ticket, preserves Lab 2 Ticket and Attachment behavior, adds a Public Comment, indicates Problem Appears Resolved, confirms formal status remains unchanged, and completes the responsive checks | `e2e/lab-03/requester-ticket-flow.spec.ts` | Pass |
 
 ## 3. Acceptance-Criterion Traceability
 
@@ -100,21 +100,21 @@ No test may be skipped, disabled, or commented out to make a command pass. Final
 
 ## 4. Responsive and Visual Checklist
 
-- [ ] Zen Green primary, secondary, pale, background, text, error, warning, and focus tokens match `ui-spec.md`.
-- [ ] Login and Change Password remain usable at desktop, tablet, and mobile sizes.
-- [ ] Authenticated shell shows only role-permitted navigation and exposes no selector controls.
-- [ ] Status, Requested Priority, IT Priority, User role, User status, and owner badges are consistent.
-- [ ] Editable operational fields and read-only submitted fields are visually distinct.
-- [ ] Public Comments and Internal Notes use different surfaces and explicit visibility labels.
-- [ ] Validation and safe API failures appear beside the affected form or action.
-- [ ] Busy and disabled controls retain readable Zen Green styling.
-- [ ] Queue table or cards show every required field without unreadable mega-grid behavior.
-- [ ] Queue filters and pagination remain usable without page-level horizontal scrolling.
-- [ ] Staff Detail attachments, comments, notes, and operations wrap without clipping.
-- [ ] User Management create and edit modes remain readable and operable on mobile.
-- [ ] Focus is visible, keyboard actions work, and dialogs restore focus.
-- [ ] `scrollWidth <= innerWidth` passes for each required major screen.
-- [ ] Screenshots are stored under the four required `artifacts/lab-03/screenshots/` directories and each has a caption in the external Answer Sheet.
+- [x] Zen Green primary, secondary, pale, background, text, error, warning, and focus tokens match `ui-spec.md`.
+- [x] Login and Change Password remain usable at desktop, tablet, and mobile sizes.
+- [x] Authenticated shell shows only role-permitted navigation and exposes no selector controls.
+- [x] Status, Requested Priority, IT Priority, User role, User status, and owner badges are consistent.
+- [x] Editable operational fields and read-only submitted fields are visually distinct.
+- [x] Public Comments and Internal Notes use different surfaces and explicit visibility labels.
+- [x] Validation and safe API failures appear beside the affected form or action.
+- [x] Busy and disabled controls retain readable Zen Green styling.
+- [x] Queue table or cards show every required field without unreadable mega-grid behavior.
+- [x] Queue filters and pagination remain usable without page-level horizontal scrolling.
+- [x] Staff Detail attachments, comments, notes, and operations wrap without clipping.
+- [x] User Management create and edit modes remain readable and operable on mobile.
+- [x] Focus is visible, keyboard actions work, and dialogs restore focus.
+- [x] `scrollWidth <= innerWidth` passes for each required major screen.
+- [x] Screenshots are stored under the four required `artifacts/lab-03/screenshots/` directories and each has a caption in the external Answer Sheet.
 
 ## 5. Test Commands
 
@@ -135,7 +135,20 @@ The `test:db:prepare` guard must parse `DATABASE_URL` and require the database p
 
 The E2E suite uses desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`. The API server and Vite client are started through `playwright.config.ts`, with one worker so seeded records and evidence remain deterministic.
 
-## 6. Final status rules
+## 6. Final verification record
+
+Verification completed on 2026-09-18 from branch `feature/7-lab3-e2e-visual`:
+
+- `npm run test:lab3:migration`, 1 test passed.
+- `npm run test --workspace server`, 17 test files and 140 tests passed.
+- `npm run test --workspace client`, 11 test files and 76 tests passed.
+- `npm run build`, server TypeScript and client Vite production build passed.
+- `npx playwright test`, 15 tests passed across desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`.
+- E2E evidence was visually inspected, and the no-horizontal-overflow assertion passed for each covered major screen.
+
+The combined `npm test` command had a transient client timing failure in two Lab 2 tests during one run. The server suite, the complete client suite, and both affected files passed on fresh reruns. The local Docker test database used the existing healthy `toktickit` Compose project because creating another Compose network exceeded the host address pool.
+
+## 7. Final status rules
 
 - A row changes from `Planned` to `Pass` only after the named command or E2E project completes with zero failures.
 - A test failure is recorded with the actual error, the Issue or branch where it was fixed, and a fresh rerun result.

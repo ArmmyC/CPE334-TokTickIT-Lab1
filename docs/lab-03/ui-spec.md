@@ -209,16 +209,16 @@ Allow Name, Email, Role, and Active state edits. Provide a separate Set New Init
 
 Before completion, inspect and record evidence for:
 
-- [ ] Zen Green palette, contrast, typography, and spacing match Lab 2.
-- [ ] Authenticated shell displays current User and role and only permitted navigation.
-- [ ] Login and Change Password show correct validation, busy, focus, and safe failure states.
-- [ ] Status, Requested Priority, IT Priority, role, and ownership badges are consistent.
-- [ ] Editable operational fields and read-only submitted fields are visibly distinct.
-- [ ] Public Comments and Internal Notes are clearly separated and labelled.
-- [ ] Validation messages appear beside the affected controls.
-- [ ] Desktop, tablet, and mobile layouts have no clipping, overlap, hidden required action, or horizontal overflow.
-- [ ] Loading, empty, no-results, forbidden, conflict, and safe failure states are readable.
-- [ ] Attachments remain usable and removed content cannot be previewed or downloaded.
+- [x] Zen Green palette, contrast, typography, and spacing match Lab 2.
+- [x] Authenticated shell displays current User and role and only permitted navigation.
+- [x] Login and Change Password show correct validation, busy, focus, and safe failure states.
+- [x] Status, Requested Priority, IT Priority, role, and ownership badges are consistent.
+- [x] Editable operational fields and read-only submitted fields are visibly distinct.
+- [x] Public Comments and Internal Notes are clearly separated and labelled.
+- [x] Validation messages appear beside the affected controls.
+- [x] Desktop, tablet, and mobile layouts have no clipping, overlap, hidden required action, or horizontal overflow.
+- [x] Loading, empty, no-results, forbidden, conflict, and safe failure states are readable.
+- [x] Attachments remain usable and removed content cannot be previewed or downloaded.
 
 Store real screenshots only under:
 
@@ -226,5 +226,7 @@ Store real screenshots only under:
 - `artifacts/lab-03/screenshots/staff-queue/`
 - `artifacts/lab-03/screenshots/staff-ticket-detail/`
 - `artifacts/lab-03/screenshots/user-management/`
+
+The Issue #49 verification run on 2026-09-18 passed all 15 E2E tests across the three reference viewports. Screenshots in each directory were visually inspected after the run, and the E2E suite reported no horizontal overflow on the covered major screens.
 
 The final Answer Sheet references these screenshots and includes a short description of what each proves. The screenshots and Answer Sheet are external evidence artifacts and are not used as a substitute for automated tests or backend authorization.
