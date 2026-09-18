@@ -140,13 +140,12 @@ The E2E suite uses desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 
 Verification completed on 2026-09-18 from branch `feature/7-lab3-e2e-visual`:
 
 - `npm run test:lab3:migration`, 1 test passed.
-- `npm run test --workspace server`, 17 test files and 140 tests passed.
-- `npm run test --workspace client`, 11 test files and 76 tests passed.
+- `npm test`, 17 server test files with 140 tests and 11 client test files with 76 tests passed.
 - `npm run build`, server TypeScript and client Vite production build passed.
 - `npx playwright test`, 15 tests passed across desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`.
 - E2E evidence was visually inspected, and the no-horizontal-overflow assertion passed for each covered major screen.
 
-The combined `npm test` command had a transient client timing failure in two Lab 2 tests during one run. The server suite, the complete client suite, and both affected files passed on fresh reruns. The local Docker test database used the existing healthy `toktickit` Compose project because creating another Compose network exceeded the host address pool.
+The local Docker test database used the existing healthy `toktickit` Compose project because creating another Compose network exceeded the host address pool.
 
 ## 7. Final status rules
 
