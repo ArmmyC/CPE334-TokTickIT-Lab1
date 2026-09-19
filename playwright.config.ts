@@ -3,7 +3,8 @@ import { defineConfig } from '@playwright/test';
 const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
-  testDir: './e2e/lab-02',
+  testDir: './e2e',
+  testMatch: /lab-\d+[\\/].*\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   retries: isCi ? 2 : 0,

@@ -1,6 +1,6 @@
 # TokTickIT
 
-TokTickIT is the CPE334 requester-facing IT service-desk MVP. The Lab 1 foundation is extended in Lab 2 with Development Requester context, Related Systems, Tickets, search and filtering, Ticket Detail, and attachment lifecycle behavior. Attachment bytes are stored locally under the ignored `server/storage/attachments/` directory and are never committed.
+TokTickIT is the CPE334 IT service-desk MVP. Lab 3 replaces the temporary Development Requester selector with authenticated Users, expiring sessions, first-login password change, and role-aware API protection. Attachment bytes are stored locally under the ignored `server/storage/attachments/` directory and are never committed.
 
 ## Technology
 
@@ -27,12 +27,11 @@ TokTickIT is the CPE334 requester-facing IT service-desk MVP. The Lab 1 foundati
 
        npm run db:up
 
-5. Create the initial database table and generate the Prisma client:
+5. Apply the migrations, generate the Prisma client, and repair migrated credentials:
 
-       npm run prisma:migrate --workspace server
-       npm run prisma:generate --workspace server
+       npm run prisma:migrate:lab3 --workspace server
 
-6. Seed the four supported request categories:
+6. Seed the Lab 3 reference data, local users, Tickets, comments, and notes:
 
        npm run db:seed
 
@@ -42,54 +41,85 @@ TokTickIT is the CPE334 requester-facing IT service-desk MVP. The Lab 1 foundati
 
 The Vite frontend runs at http://localhost:5183 and the Express server runs at http://localhost:4000.
 
-The root page retains the Lab 1 `Check System` button. Clicking it calls `GET /api/health` and `GET /api/categories`, then shows the backend status and seeded category IDs and names. The Lab 2 requester flow starts at `/select-requester`.
+The root page retains the Lab 1 `Check System` button. Clicking it calls `GET /api/health` and the protected category endpoint, then shows the backend status and seeded category IDs and names. The authenticated Lab 3 UI is available after setup and uses the seeded Users and role permissions described below.
 
 ## Tests and build
+
+For the database-backed Lab 3 migration regression, first copy `.env.test.example` to `.env.test` and replace the local credentials. Then start and prepare the dedicated test database:
+
+    npm run db:test:up
+    npm run test:db:prepare
 
 Run the configured unit and API test commands:
 
     npm test
 
+Run the Lab 3 migration-preservation regression against an isolated schema in the dedicated test database:
+
+    npm run test:lab3:migration
+
 Build both workspaces:
 
     npm run build
 
-Prepare the isolated Lab 2 test database and run the Playwright requester flow:
+Prepare the isolated Lab 3 test database and run the Playwright flows:
 
-    Copy .env.test.example to .env.test and replace the local credentials.
     npm run test:e2e
 
 The E2E script starts the test service on PostgreSQL host port 5434, validates that `DATABASE_URL` points to the `toktickit_test` database, resets and seeds it, then starts the API and client. The preparation guard rejects missing, malformed, development, or differently named database URLs before running reset, migration, or seed commands. Never commit `.env.test`.
 
-## Lab 2 requester flow
+## Lab 3 local credentials
 
-The Development Requester selector is a testing context, not authentication. It loads active Requesters from PostgreSQL, stores the selected id in session storage under `toktickit.developmentRequesterId`, and guards the requester routes until a valid selection exists.
+These accounts are deterministic local-development and test fixtures only. They are not production credentials. Every seeded account starts with `mustChangePassword = true`.
 
-Routes:
+| Role | Email | Initial password |
+| --- | --- | --- |
+| Requester | `ariya@example.test` | `TokTickIT-Lab3!User-1-Aa` |
+| Requester | `narin@example.test` | `TokTickIT-Lab3!User-2-Aa` |
+| Requester | `pimchanok@example.test` | `TokTickIT-Lab3!User-3-Aa` |
+| Requester | `kittipong@example.test` | `TokTickIT-Lab3!User-4-Aa` |
+| Inactive Requester | `mali@example.test` | `TokTickIT-Lab3!User-5-Aa` |
+| IT Staff | `somchai@example.test` | `TokTickIT-Lab3!Staff-Sr` |
+| IT Staff | `nalinee@example.test` | `TokTickIT-Lab3!Staff-Nw` |
+| IT Staff | `chaiwat@example.test` | `TokTickIT-Lab3!Staff-Ck` |
+| Inactive IT Staff | `ploy@example.test` | `TokTickIT-Lab3!Staff-Ps` |
+| Administrator | `anong@example.test` | `TokTickIT-Lab3!Admin-Ap` |
 
-- `/select-requester`
-- `/tickets`
-- `/tickets/new`
-- `/tickets/:ticketId`
+When the Lab 2 database is migrated, each legacy Requester keeps its original numeric id and receives the initial password `TokTickIT-Lab3!User-<legacyUserId>-Aa`. The migration SQL first writes a valid unusable scrypt placeholder for every legacy row, then `prisma:migrate:lab3` and the seed repair step derive the per-user scrypt hash. The plaintext value is not stored or returned.
 
-The requester-facing API is under `/api` and includes reference-data retrieval, ticket creation and listing, owned Ticket Detail, attachment upload and metadata, active preview or download, and soft removal. Every requester-scoped request carries an explicit `requesterId`. Cross-requester and removed-resource content access returns the same safe not-found response.
+Authentication endpoints are under `/api/auth`: login, current-user discovery, password change, and logout. Sessions use an HttpOnly `toktickit_session` cookie and a non-HttpOnly `toktickit_csrf` cookie for mutation protection. Normal protected API requests derive identity from the session, not from client-supplied requester or role fields.
 
-The fixed seed contains four active Requesters, one inactive Requester, the four required Categories, and seven Related Systems. Re-running the seed is idempotent. The Create Ticket flow creates the Ticket first, then uploads selected files sequentially, so successful work remains visible when a later upload fails.
+The fixed seed contains four active Requesters, one inactive Requester, three active IT Staff, one inactive IT Staff, one active Administrator, the four required Categories, seven Related Systems, Tickets across the documented statuses, and communication records. Re-running it is idempotent.
+
+## Lab 3 role-specific usage
+
+Every seeded account starts in the mandatory first-login password-change flow. Sign in with an account from the table above, save a new password that satisfies the visible rules, and then continue to the route permitted for that role.
+
+- Requester: use My Tickets, Create Ticket, and owned Ticket Detail. Existing Ticket and Attachment behavior remains available, and Ticket Detail also supports Public Comments and the Problem Appears Resolved indication. The old Development Requester selector and Change Requester action are not part of Lab 3.
+- IT Staff: use Ticket Queue to search, filter, sort, paginate, open Ticket Detail, claim or reassign Tickets, change IT Priority, apply permitted status transitions, add Public Comments, and add Internal Notes. IT Staff cannot use Administrator User Management.
+- Administrator: use User Management to list, search, filter, create, edit, activate or deactivate Users, and set a new initial password. Administrators do not receive the Staff Queue navigation. A permitted protected Ticket link provides read-only Ticket communication and the contractually allowed IT Priority edit, while Staff-only mutations remain unavailable.
+
+These seeded accounts are local-development fixtures only. Do not reuse their passwords outside the lab database, and do not commit `.env` or `.env.test`.
 
 ## Lab 2 evidence
 
 Real Playwright screenshots are stored under `artifacts/lab-02/screenshots/create-ticket/`, `artifacts/lab-02/screenshots/my-tickets/`, and `artifacts/lab-02/screenshots/ticket-detail/` for desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`. The individual Lab 2 Answer Sheet and final PDF are prepared and submitted on the course platform, not stored in this repository. Any local submission output and temporary render files remain ignored by Git.
 
-## Lab 2 database preparation
+## Lab 3 database preparation
 
-Start PostgreSQL, apply the Lab 2 migration, generate the Prisma client, and seed the fixed reference data:
+Start PostgreSQL, apply all migrations, generate the Prisma client, and seed the fixed Lab 3 data:
 
     npm run db:up
-    npm run prisma:migrate:lab2 --workspace server
-    npm run prisma:generate --workspace server
+    npm run prisma:migrate:lab3 --workspace server
     npm run db:seed
 
-The repeatable seed preserves the four Lab 1 Categories and upserts seven Related Systems, four active Development Requesters, and one inactive Development Requester. Re-running it does not create duplicate rows.
+The repeatable seed preserves the four Lab 1 Categories and seven Lab 2 Related Systems, converts or upserts the required Users, and adds the Lab 3 workflow fixtures without duplicate Tickets, comments, or notes.
+
+## Lab 3 repository workflow
+
+Lab 3 uses `main` as the stable branch and `lab3-staging` as the integration branch. Each Issue is implemented on its required branch, reviewed by Bank848, and merged by Bank848 into `lab3-staging`. The documentation increment uses `docs/lab3-delivery`, followed by the required release branch `release/lab3-to-main` from `lab3-staging` to `main`. Do not push directly to `lab3-staging` or `main`.
+
+The Lab 3 verification matrix is discovered by `playwright.config.ts` from `e2e/lab-02/` and `e2e/lab-03/`. The current matrix contains the retained Lab 2 Requester regression flow plus the Lab 3 authentication, Requester, Staff, and Administrator flows. Real screenshot evidence is stored only under the four required `artifacts/lab-03/screenshots/` directories. The Answer Sheet and final PDF are external submission artifacts and stay outside Git.
 
 ## Lab 1 Git workflow
 

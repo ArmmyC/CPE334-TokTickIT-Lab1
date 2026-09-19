@@ -6,7 +6,17 @@ export default defineConfig({
   server: {
     port: 5183,
     proxy: {
-      '/api': 'http://localhost:4000',
+      '/api': {
+        target: 'http://127.0.0.1:4000',
+        changeOrigin: true,
+        configure: (proxy) => {
+          // Rewrite the local proxy hop to the API origin so the API's normal
+          // same-origin check remains active during browser E2E runs.
+          proxy.on('proxyReq', (proxyRequest) => {
+            proxyRequest.setHeader('origin', 'http://127.0.0.1:4000');
+          });
+        },
+      },
     },
   },
   test: {

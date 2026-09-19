@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Link,
   Navigate,
@@ -8,10 +8,15 @@ import {
   Routes,
   useNavigate,
 } from 'react-router-dom';
-import { RequesterProvider, useRequesterContext } from './requester-context';
+import { AuthProvider, useAuth, type AuthUserRole } from './auth-context';
+import { ChangePasswordPage } from './ChangePasswordPage';
 import { CreateTicketPage } from './CreateTicketPage';
+import { LoginPage } from './LoginPage';
 import { MyTicketsPage } from './MyTicketsPage';
+import { StaffTicketQueuePage } from './StaffTicketQueuePage';
+import { StaffTicketDetailPage } from './StaffTicketDetailPage';
 import { TicketDetailPage } from './TicketDetailPage';
+import { UserManagementPage } from './UserManagementPage';
 
 type HealthState = 'idle' | 'checking' | 'online' | 'offline';
 type CategoryState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -158,115 +163,39 @@ function LabOneFoundation() {
           )}
         </section>
       )}
-      <p className="mt-4"><Link to="/select-requester">Open the Lab 2 requester selector</Link></p>
-    </main>
-  );
-}
-
-function RequesterSelection() {
-  const navigate = useNavigate();
-  const {
-    requesters,
-    selectedRequester,
-    loadState,
-    errorMessage,
-    reloadRequesters,
-    chooseRequester,
-  } = useRequesterContext();
-  const [selection, setSelection] = useState(selectedRequester ? String(selectedRequester.id) : '');
-  const [selectionError, setSelectionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSelection(selectedRequester ? String(selectedRequester.id) : '');
-  }, [selectedRequester]);
-
-  const selected = requesters.find(({ id }) => String(id) === selection) ?? null;
-  const continueSelection = () => {
-    if (!selected) {
-      setSelectionError('Select an active Development Requester before continuing.');
-      return;
-    }
-
-    chooseRequester(selected);
-    navigate('/tickets');
-  };
-
-  return (
-    <main className="requester-page" aria-labelledby="requester-title">
-      <section className="requester-card" aria-describedby="requester-explanation">
-        <p className="eyebrow">TokTickIT / Lab 2</p>
-        <h1 id="requester-title">Select a Development Requester</h1>
-        <p id="requester-explanation" className="text-secondary">
-          Choose a seeded Development Requester for this testing context. This selector is for Lab 2 testing only,
-          not a login or authentication system.
-        </p>
-
-        {loadState === 'loading' && (
-          <p role="status" aria-live="polite" className="state-message">Loading Development Requesters...</p>
-        )}
-
-        {loadState === 'error' && (
-          <div role="alert" className="state-message state-message-error">
-            <p>{errorMessage}</p>
-            <button type="button" className="btn btn-secondary" onClick={reloadRequesters}>Retry</button>
-          </div>
-        )}
-
-        {loadState === 'ready' && requesters.length === 0 && (
-          <div role="alert" className="state-message state-message-warning">
-            <p>No active Development Requesters are available.</p>
-            <button type="button" className="btn btn-secondary" onClick={reloadRequesters}>Retry</button>
-          </div>
-        )}
-
-        {loadState === 'ready' && requesters.length > 0 && (
-          <>
-            <div className="field-group">
-              <label htmlFor="development-requester">Development Requester</label>
-              <select
-                id="development-requester"
-                className="form-select"
-                value={selection}
-                onChange={(event) => {
-                  setSelection(event.target.value);
-                  setSelectionError(null);
-                }}
-                aria-describedby={selectionError ? 'requester-selection-error' : undefined}
-              >
-                <option value="">Select an active requester</option>
-                {requesters.map((requester) => (
-                  <option key={requester.id} value={requester.id}>
-                    {requester.name} ({requester.email})
-                  </option>
-                ))}
-              </select>
-              {selectionError && (
-                <p id="requester-selection-error" role="alert" className="field-error">{selectionError}</p>
-              )}
-            </div>
-            <button type="button" className="btn btn-primary btn-lg" disabled={!selected} onClick={continueSelection}>
-              Continue
-            </button>
-          </>
-        )}
-      </section>
+      <p className="mt-4"><Link to="/login">Sign in to the service desk</Link></p>
     </main>
   );
 }
 
 function ApplicationShell() {
-  const { selectedRequester, clearRequester } = useRequesterContext();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  if (!selectedRequester) {
-    return <Navigate to="/select-requester" replace />;
-  }
+  if (!user) return null;
 
-  const changeRequester = () => {
-    clearRequester();
-    setMenuOpen(false);
-    navigate('/select-requester');
+  const isRequester = user.role === 'REQUESTER';
+  const isStaff = user.role === 'IT_STAFF';
+  const isAdministrator = user.role === 'ADMINISTRATOR';
+  const roleLabel: Record<AuthUserRole, string> = {
+    REQUESTER: 'Requester',
+    IT_STAFF: 'IT Staff',
+    ADMINISTRATOR: 'Administrator',
+  };
+  const signOut = async () => {
+    setIsLoggingOut(true);
+    setLogoutError(null);
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch {
+      setLogoutError('Unable to sign out. Try again.');
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -276,7 +205,7 @@ function ApplicationShell() {
     <div className="app-shell">
       <header className="shell-header">
         <div className="shell-header-inner">
-          <Link to="/tickets" className="shell-brand" onClick={() => setMenuOpen(false)}>
+          <Link to={isRequester ? '/tickets' : '/home'} className="shell-brand" onClick={() => setMenuOpen(false)}>
             <span className="shell-brand-mark" aria-hidden="true">T</span>
             <span>TokTickIT</span>
           </Link>
@@ -290,33 +219,131 @@ function ApplicationShell() {
             {menuOpen ? 'Close navigation' : 'Open navigation'}
           </button>
           <nav id="shell-navigation" className={menuOpen ? 'shell-navigation shell-navigation-open' : 'shell-navigation'} aria-label="Main navigation">
-            <NavLink to="/tickets" className={navLinkClass} onClick={() => setMenuOpen(false)}>My Tickets</NavLink>
-            <NavLink to="/tickets/new" className={navLinkClass} onClick={() => setMenuOpen(false)}>Create Ticket</NavLink>
+            {isRequester && (
+              <>
+                <NavLink to="/tickets" className={navLinkClass} onClick={() => setMenuOpen(false)}>My Tickets</NavLink>
+                <NavLink to="/tickets/new" className={navLinkClass} onClick={() => setMenuOpen(false)}>Create Ticket</NavLink>
+              </>
+            )}
+            {isStaff && (
+              <NavLink to="/staff/tickets" className={navLinkClass} onClick={() => setMenuOpen(false)}>Ticket Queue</NavLink>
+            )}
+            {isAdministrator && (
+              <NavLink to="/admin/users" className={navLinkClass} onClick={() => setMenuOpen(false)}>User Management</NavLink>
+            )}
           </nav>
-          <div className="shell-requester">
-            <span className="shell-requester-label">Selected Requester</span>
-            <strong>{selectedRequester.name}</strong>
-            <button type="button" className="shell-change-button" onClick={changeRequester}>Change Requester</button>
+          <div className="shell-user">
+            <span className="shell-user-label">Signed in as</span>
+            <strong>{user.name}</strong>
+            <span className="role-badge">{roleLabel[user.role]}</span>
+            <button type="button" className="shell-logout" onClick={() => void signOut()} disabled={isLoggingOut}>
+              {isLoggingOut ? 'Signing out...' : 'Log out'}
+            </button>
           </div>
         </div>
       </header>
-      <div className="testing-notice" role="note">
-        Lab 2 testing context only, this is not a login or authentication system.
-      </div>
+      {logoutError && <div role="alert" className="shell-alert">{logoutError}</div>}
       <main className="shell-content"><Outlet /></main>
     </div>
   );
 }
 
 function ProtectedRoutes() {
-  const { loadState, selectedRequester } = useRequesterContext();
+  const { loadState, user } = useAuth();
   if (loadState === 'loading') {
-    return <p role="status" className="page-status">Loading requester context...</p>;
+    return <p role="status" className="page-status">Checking your session...</p>;
   }
-  if (!selectedRequester) {
-    return <Navigate to="/select-requester" replace />;
+  if (loadState === 'error') {
+    return <LoginPage />;
+  }
+  if (!user || loadState === 'unauthenticated') {
+    return <Navigate to="/login" replace />;
+  }
+  if (user.mustChangePassword) {
+    return <Navigate to="/change-password" replace />;
   }
   return <ApplicationShell />;
+}
+
+function RequesterOnly() {
+  const { user } = useAuth();
+  if (!user || user.role !== 'REQUESTER') {
+    return (
+      <section className="placeholder-page" aria-labelledby="access-title">
+        <p className="eyebrow">TokTickIT / Access</p>
+        <h1 id="access-title">Requester access is required</h1>
+        <p>This destination is available only to Requester accounts.</p>
+      </section>
+    );
+  }
+  return <Outlet />;
+}
+
+function StaffOnly() {
+  const { user } = useAuth();
+  if (!user || user.role !== 'IT_STAFF') {
+    return (
+      <section className="placeholder-page" aria-labelledby="staff-access-title">
+        <p className="eyebrow">TokTickIT / Access</p>
+        <h1 id="staff-access-title">IT Staff access is required</h1>
+        <p>This destination is available only to IT Staff accounts.</p>
+      </section>
+    );
+  }
+  return <Outlet />;
+}
+
+function AdministratorOnly() {
+  const { user } = useAuth();
+  if (!user || user.role !== 'ADMINISTRATOR') {
+    return (
+      <section className="placeholder-page" aria-labelledby="administrator-access-title">
+        <p className="eyebrow">TokTickIT / Access</p>
+        <h1 id="administrator-access-title">Administrator access is required</h1>
+        <p>This destination is available only to Administrator accounts.</p>
+      </section>
+    );
+  }
+  return <Outlet />;
+}
+
+function StaffTicketDetailAccess() {
+  const { user } = useAuth();
+  if (!user || (user.role !== 'IT_STAFF' && user.role !== 'ADMINISTRATOR')) {
+    return (
+      <section className="placeholder-page" aria-labelledby="staff-detail-access-title">
+        <p className="eyebrow">TokTickIT / Access</p>
+        <h1 id="staff-detail-access-title">Staff Ticket Detail access is required</h1>
+        <p>This destination is available only to IT Staff and Administrator accounts.</p>
+      </section>
+    );
+  }
+  return <Outlet />;
+}
+
+/*
+ * The protected detail route is shared by IT Staff and Administrators. The
+ * page applies the narrower Administrator mutation rules after the route guard.
+ */
+function StaffTicketDetailRoute() {
+  return (
+    <StaffTicketDetailPage />
+  );
+}
+
+function RoleHomePage() {
+  const { user } = useAuth();
+  if (!user) return null;
+  if (user.role === 'REQUESTER') {
+    return <Navigate to="/tickets" replace />;
+  }
+  return (
+    <section className="placeholder-page" aria-labelledby="role-home-title">
+      <p className="eyebrow">TokTickIT / Workspace</p>
+      <h1 id="role-home-title">Welcome, {user.name}</h1>
+      <p>Your {user.role === 'IT_STAFF' ? 'IT Staff' : 'Administrator'} workspace is ready for the next authorized Lab 3 increment.</p>
+    </section>
+  );
 }
 
 function PlaceholderPage({ title, description }: { title: string; description: string }) {
@@ -333,21 +360,35 @@ function RoutedApplication() {
   return (
     <Routes>
       <Route path="/" element={<LabOneFoundation />} />
-      <Route path="/select-requester" element={<RequesterSelection />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route element={<ProtectedRoutes />}>
-        <Route path="/tickets" element={<MyTicketsPage />} />
-        <Route path="/tickets/new" element={<CreateTicketPage />} />
-        <Route path="/tickets/:ticketId" element={<TicketDetailPage />} />
+        <Route path="/home" element={<RoleHomePage />} />
+        <Route element={<RequesterOnly />}>
+          <Route path="/tickets" element={<MyTicketsPage />} />
+          <Route path="/tickets/new" element={<CreateTicketPage />} />
+          <Route path="/tickets/:ticketId" element={<TicketDetailPage />} />
+        </Route>
+        <Route element={<StaffOnly />}>
+          <Route path="/staff/tickets" element={<StaffTicketQueuePage />} />
+        </Route>
+        <Route element={<AdministratorOnly />}>
+          <Route path="/admin/users" element={<UserManagementPage />} />
+        </Route>
+        <Route element={<StaffTicketDetailAccess />}>
+          <Route path="/staff/tickets/:ticketId" element={<StaffTicketDetailRoute />} />
+          <Route path="/admin/tickets/:ticketId" element={<StaffTicketDetailRoute />} />
+        </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }
 
 export function App() {
   return (
-    <RequesterProvider>
+    <AuthProvider>
       <RoutedApplication />
-    </RequesterProvider>
+    </AuthProvider>
   );
 }

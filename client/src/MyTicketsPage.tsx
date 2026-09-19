@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useRequesterContext } from './requester-context';
+import { useAuth } from './auth-context';
+import { apiFetch, readJson } from './api';
 
 type ReferenceOption = {
   id: number;
@@ -127,9 +128,8 @@ function appendQueryValue(parameters: URLSearchParams, key: string, value: strin
   }
 }
 
-function buildTicketListUrl(requesterId: number, filters: TicketListFilters): string {
+function buildTicketListUrl(filters: TicketListFilters): string {
   const parameters = new URLSearchParams({
-    requesterId: String(requesterId),
     page: String(filters.page),
     pageSize: filters.pageSize,
     sortBy: filters.sortBy,
@@ -144,7 +144,7 @@ function buildTicketListUrl(requesterId: number, filters: TicketListFilters): st
 }
 
 export function MyTicketsPage() {
-  const { selectedRequester } = useRequesterContext();
+  const { user } = useAuth();
   const [categories, setCategories] = useState<ReferenceOption[]>([]);
   const [relatedSystems, setRelatedSystems] = useState<ReferenceOption[]>([]);
   const [referenceState, setReferenceState] = useState<LoadState>('loading');
@@ -158,13 +158,13 @@ export function MyTicketsPage() {
     let cancelled = false;
     setReferenceState('loading');
     void Promise.all([
-      fetch('/api/categories'),
-      fetch('/api/related-systems'),
-    ])
+      apiFetch('/api/categories'),
+      apiFetch('/api/related-systems'),
+      ])
       .then(async ([categoryResponse, relatedSystemResponse]) => {
         const [categoryBody, relatedSystemBody] = await Promise.all([
-          categoryResponse.json() as Promise<unknown>,
-          relatedSystemResponse.json() as Promise<unknown>,
+          readJson(categoryResponse),
+          readJson(relatedSystemResponse),
         ]);
         if (
           !categoryResponse.ok ||
@@ -199,15 +199,15 @@ export function MyTicketsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedRequester) {
+    if (!user) {
       return undefined;
     }
     let cancelled = false;
     setListState('loading');
     setErrorMessage(null);
-    void fetch(buildTicketListUrl(selectedRequester.id, filters))
+    void apiFetch(buildTicketListUrl(filters))
       .then(async (response) => {
-        const body = (await response.json()) as unknown;
+        const body = await readJson(response);
         if (!response.ok || !isTicketListResponse(body)) {
           const message = typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string'
             ? body.error
@@ -233,7 +233,7 @@ export function MyTicketsPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters, retryKey, selectedRequester]);
+  }, [filters, retryKey, user]);
 
   const hasActiveFilters = useMemo(
     () => Boolean(
@@ -265,7 +265,7 @@ export function MyTicketsPage() {
           <p className="eyebrow">TokTickIT / Lab 2</p>
           <h1 id="my-tickets-title">My Tickets</h1>
           <p className="text-secondary mb-0">
-            Tickets owned by <strong>{selectedRequester?.name}</strong>. This list is scoped to the selected testing Requester.
+            Tickets owned by <strong>{user?.name}</strong>. This list is scoped to your authenticated account.
           </p>
         </div>
         <Link className="btn btn-primary" to="/tickets/new">Create Ticket</Link>
@@ -361,7 +361,7 @@ export function MyTicketsPage() {
 
           {list.items.length === 0 ? (
             <div className="state-message state-message-warning" role="status">
-              <p>{hasActiveFilters ? 'No Tickets match your search or filters.' : 'No Tickets yet for this Requester.'}</p>
+              <p>{hasActiveFilters ? 'No Tickets match your search or filters.' : 'No Tickets yet for your account.'}</p>
               <Link className="btn btn-primary" to="/tickets/new">Create Ticket</Link>
             </div>
           ) : (

@@ -3,10 +3,14 @@ import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/App';
 
-const requesters = [
-  { id: 1, name: 'Ariya Anderson', email: 'ariya@example.test' },
-  { id: 2, name: 'Narin Chai', email: 'narin@example.test' },
-];
+const authenticatedUser = {
+  id: 1,
+  name: 'Ariya Anderson',
+  email: 'ariya@example.test',
+  role: 'REQUESTER',
+  isActive: true,
+  mustChangePassword: false,
+};
 
 const detailResponse = {
   ticket: {
@@ -21,31 +25,34 @@ const detailResponse = {
     requestedPriority: 'MEDIUM',
     itPriority: null,
     currentStatus: 'NEW',
+    owner: null,
+    attachments: [
+      {
+        id: 7,
+        originalName: 'evidence.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 12000,
+        uploadedAt: '2026-08-21T10:00:00.000Z',
+        removedAt: null,
+        removalReason: null,
+        downloadAvailable: true,
+      },
+      {
+        id: 8,
+        originalName: 'old-screenshot.png',
+        mimeType: 'image/png',
+        sizeBytes: 2048,
+        uploadedAt: '2026-08-21T10:00:00.000Z',
+        removedAt: '2026-08-21T11:00:00.000Z',
+        removalReason: 'Uploaded the wrong document',
+        downloadAvailable: false,
+      },
+    ],
+    publicComments: [],
+    requesterResolution: null,
     createdAt: '2026-08-21T10:00:00.000Z',
     updatedAt: '2026-08-21T10:00:00.000Z',
   },
-  attachments: [
-    {
-      id: 7,
-      originalName: 'evidence.pdf',
-      mimeType: 'application/pdf',
-      sizeBytes: 12000,
-      uploadedAt: '2026-08-21T10:00:00.000Z',
-      removedAt: null,
-      removalReason: null,
-      downloadAvailable: true,
-    },
-    {
-      id: 8,
-      originalName: 'old-screenshot.png',
-      mimeType: 'image/png',
-      sizeBytes: 2048,
-      uploadedAt: '2026-08-21T10:00:00.000Z',
-      removedAt: '2026-08-21T11:00:00.000Z',
-      removalReason: 'Uploaded the wrong document',
-      downloadAvailable: false,
-    },
-  ],
 };
 
 function setPath(path: string) {
@@ -58,12 +65,36 @@ function stubDetailApi(
     json: async () => detailResponse,
   },
 ) {
-  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.endsWith('/api/development-requesters')) {
-      return Promise.resolve({ ok: true, json: async () => requesters });
+    if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
+    if (url === '/api/tickets/42/comments' && init?.method === 'POST') {
+      return Promise.resolve({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          comment: {
+            id: 9,
+            content: 'The issue is resolved now.',
+            author: { id: 1, name: 'Ariya Anderson', role: 'REQUESTER' },
+            createdAt: '2026-08-21T11:30:00.000Z',
+          },
+        }),
+      });
     }
-    if (url.startsWith('/api/tickets/42')) {
+    if (url === '/api/tickets/42/requester-resolution' && init?.method === 'POST') {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          requesterResolution: {
+            resolvedAt: '2026-08-21T11:35:00.000Z',
+            resolvedBy: { id: 1, name: 'Ariya Anderson', role: 'REQUESTER' },
+          },
+        }),
+      });
+    }
+    if (url === '/api/tickets/42') {
       return Promise.resolve(detail);
     }
     return Promise.reject(new Error(`Unexpected request: ${url}`));
@@ -73,7 +104,6 @@ function stubDetailApi(
 }
 
 async function renderDetail() {
-  sessionStorage.setItem('toktickit.developmentRequesterId', '1');
   setPath('/tickets/42');
   render(<BrowserRouter><App /></BrowserRouter>);
   expect(await screen.findByRole('heading', { name: 'Ticket Detail' })).toBeInTheDocument();
@@ -81,7 +111,7 @@ async function renderDetail() {
 
 beforeEach(() => {
   sessionStorage.clear();
-  setPath('/select-requester');
+  setPath('/tickets/42');
 });
 
 afterEach(() => {
@@ -107,16 +137,14 @@ describe('Lab 2 Ticket Detail screen', () => {
     expect(screen.getByText('Removed', { exact: true })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to My Tickets' })).toHaveAttribute('href', '/tickets');
     expect(screen.queryByRole('textbox', { name: /Summary/i })).not.toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/tickets/42?requesterId=1')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/tickets/42')).toBe(true);
   });
 
   it('announces loading and then renders the owned detail after the request resolves', async () => {
     let resolveDetail: ((response: { ok: boolean; json: () => Promise<unknown> }) => void) | undefined;
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/api/development-requesters')) {
-        return Promise.resolve({ ok: true, json: async () => requesters });
-      }
+      if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
       if (url.startsWith('/api/tickets/42')) {
         return new Promise((resolve) => { resolveDetail = resolve; });
       }
@@ -141,9 +169,7 @@ describe('Lab 2 Ticket Detail screen', () => {
 
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/api/development-requesters')) {
-        return Promise.resolve({ ok: true, json: async () => requesters });
-      }
+      if (url.endsWith('/api/auth/me')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ user: authenticatedUser, passwordChangeRequired: false }) });
       if (url.startsWith('/api/tickets/42')) {
         return Promise.resolve({ ok: true, json: async () => detailResponse });
       }
@@ -152,5 +178,29 @@ describe('Lab 2 Ticket Detail screen', () => {
     const retry = await screen.findByRole('button', { name: 'Retry' });
     fireEvent.click(retry);
     await waitFor(() => expect(screen.getByText('TKT-2026-000042')).toBeInTheDocument());
+  });
+
+  it('posts Public Comments and records a separate Problem Appears Resolved indication', async () => {
+    const fetchMock = stubDetailApi();
+
+    await renderDetail();
+    expect(await screen.findByText('TKT-2026-000042')).toBeInTheDocument();
+
+    expect(screen.getByRole('heading', { name: 'Public Comments' })).toBeInTheDocument();
+    expect(screen.getByText(/No Public Comments have been recorded/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Public Comment' }), { target: { value: 'The issue is resolved now.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Post Public Comment' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => (
+      String(input) === '/api/tickets/42/comments' && init?.method === 'POST'
+    ))).toBe(true));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Problem Appears Resolved' }));
+    expect(screen.getByRole('button', { name: 'Confirm Problem Appears Resolved' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Problem Appears Resolved' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => (
+      String(input) === '/api/tickets/42/requester-resolution' && init?.method === 'POST'
+    ))).toBe(true));
+    expect(screen.getByText(/does not change the formal Ticket status/i)).toBeInTheDocument();
+    expect(screen.queryByText('Internal Notes')).not.toBeInTheDocument();
   });
 });

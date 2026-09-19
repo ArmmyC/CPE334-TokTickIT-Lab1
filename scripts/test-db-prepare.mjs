@@ -34,8 +34,13 @@ const npxCommand = process.platform === 'win32'
 const npxPrefix = process.platform === 'win32'
   ? [path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js')]
   : [];
+const resetArguments = ['prisma', 'migrate', 'reset', '--force', '--skip-seed'];
+if (process.env.TOKTICKIT_SKIP_PRISMA_GENERATE === '1') {
+  resetArguments.push('--skip-generate');
+}
+
 const commands = [
-  ['prisma', 'migrate', 'reset', '--force', '--skip-seed'],
+  resetArguments,
   ['prisma', 'migrate', 'deploy'],
   ['tsx', 'prisma/seed.ts'],
 ];

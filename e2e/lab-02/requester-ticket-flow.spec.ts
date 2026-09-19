@@ -1,9 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { SEEDED_ACCOUNTS, signInWithSeededAccount } from '../lab-03/helpers';
 
-const ACTIVE_REQUESTER = 'Ariya Anderson (ariya@example.test)';
-const SWITCHED_REQUESTER = 'Narin Chai (narin@example.test)';
 const INITIAL_ATTACHMENT = 'initial-evidence.pdf';
 
 function pdfFile(name: string) {
@@ -58,29 +57,15 @@ async function saveEvidenceScreenshot(page: Page, group: string, projectName: st
   });
 }
 
-async function selectRequester(page: Page, requester: string): Promise<void> {
-  const selector = page.getByLabel('Development Requester', { exact: true });
-  await expect(selector).toBeVisible();
-  await selector.selectOption({ label: requester });
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'My Tickets', exact: true })).toBeVisible();
-}
-
-test('requester can create, find, inspect, upload, remove, and isolate a Ticket', async ({ page, request }, testInfo) => {
+test('requester can create, find, inspect, upload, remove, and isolate a Ticket', async ({ page }, testInfo) => {
   const projectName = testInfo.project.name;
   const runToken = `${Date.now()}-${projectName}`;
   const summary = `E2E requester flow ${runToken}`;
   const description = `Lab 2 integration evidence for ${runToken}.`;
   const followUpAttachment = `follow-up-${projectName}.pdf`;
 
-  await page.goto('/select-requester');
-  await expect(page.getByRole('heading', { name: 'Select a Development Requester', exact: true })).toBeVisible();
-  const requesterSelector = page.getByLabel('Development Requester', { exact: true });
-  await expect(requesterSelector.locator('option')).toHaveCount(5, { timeout: 30_000 });
-  const requesterOptions = await requesterSelector.locator('option').allTextContents();
-  expect(requesterOptions.some((option) => option.includes('Mali Boonmee'))).toBe(false);
-  expect(requesterOptions.filter((option) => option.includes('@example.test')).length).toBeGreaterThanOrEqual(4);
-  await selectRequester(page, ACTIVE_REQUESTER);
+  await signInWithSeededAccount(page, SEEDED_ACCOUNTS.requester);
+  await expect(page.getByRole('heading', { name: 'My Tickets', exact: true })).toBeVisible();
   await assertNoHorizontalOverflow(page, 'My Tickets');
 
   if (projectName === 'mobile') {
@@ -103,7 +88,7 @@ test('requester can create, find, inspect, upload, remove, and isolate a Ticket'
   await expect(page.getByText('Summary must be between 5 and 120 characters after trimming.', { exact: true })).toBeVisible();
   await saveEvidenceScreenshot(page, 'create-ticket', projectName, 'validation');
 
-  await expect(page.getByLabel('Development Requester', { exact: true })).toHaveValue(/./);
+  await expect(page.getByLabel('Requester', { exact: true })).toHaveValue(/./);
 
   const attachmentsInput = page.getByLabel('Attachments');
   await attachmentsInput.setInputFiles({
@@ -208,16 +193,12 @@ test('requester can create, find, inspect, upload, remove, and isolate a Ticket'
   await saveEvidenceScreenshot(page, 'ticket-detail', projectName, 'removed-attachment');
   await assertNoHorizontalOverflow(page, 'Ticket Detail removed attachment');
 
-  const blockedResponse = await request.get(new URL(followUpPreviewHref ?? '', page.url()).toString());
+  const blockedResponse = await page.request.get(new URL(followUpPreviewHref ?? '', page.url()).toString());
   expect(blockedResponse.status()).toBe(404);
 
-  await page.getByRole('button', { name: 'Change Requester', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Select a Development Requester', exact: true })).toBeVisible();
-  await selectRequester(page, SWITCHED_REQUESTER);
-  await page.getByLabel('Search Tickets').fill(summary);
-  await expect(page.getByText('No Tickets match your search or filters.', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await assertNoHorizontalOverflow(page, 'Switched requester filtered My Tickets');
-
+  await page.getByRole('button', { name: 'Log out', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await signInWithSeededAccount(page, SEEDED_ACCOUNTS.secondaryRequester);
   await page.goto(`/tickets/${ticketId}`);
   await expect(page.getByRole('alert')).toContainText('Ticket not found.');
   await saveEvidenceScreenshot(page, 'ticket-detail', projectName, 'foreign-404');

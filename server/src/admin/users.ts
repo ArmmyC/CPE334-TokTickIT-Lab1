@@ -1,0 +1,517 @@
+import type { AuthUserRecord, AuthUserRole } from '../auth/types.js';
+import { hashPassword, validatePassword } from '../auth/password.js';
+
+export type AdminUserRole = Extract<AuthUserRole, 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR'>;
+
+export type AdminUserResponse = Pick<
+  AuthUserRecord,
+  'id' | 'name' | 'email' | 'role' | 'isActive' | 'mustChangePassword' | 'createdAt' | 'updatedAt'
+>;
+
+export type AdminUserQuery = {
+  search: string;
+  role?: AdminUserRole;
+};
+
+export type CreateAdminUserInput = {
+  name: string;
+  email: string;
+  role: AdminUserRole;
+  isActive: boolean;
+  initialPassword: string;
+};
+
+export type UpdateAdminUserInput = {
+  name?: string;
+  email?: string;
+  role?: AdminUserRole;
+  isActive?: boolean;
+};
+
+export type InitialPasswordInput = {
+  initialPassword: string;
+};
+
+type AdminUserCredentialUpdate = Pick<AuthUserRecord, 'passwordHash' | 'mustChangePassword'>;
+
+type AdminUserSearchFilter = {
+  contains: string;
+  mode: 'insensitive';
+};
+
+export type AdminUserWhere = {
+  OR?: Array<{
+    name?: AdminUserSearchFilter;
+    email?: AdminUserSearchFilter;
+  }>;
+  role?: AdminUserRole;
+};
+
+export const ADMIN_USER_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  isActive: true,
+  mustChangePassword: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+export type AdminUserDatabase = {
+  $transaction?<T>(callback: (database: AdminUserDatabase) => Promise<T>): Promise<T>;
+  user: {
+    findMany(args: {
+      where: AdminUserWhere;
+      select: typeof ADMIN_USER_SELECT;
+      orderBy: [{ name: 'asc' }, { id: 'asc' }];
+    }): Promise<AdminUserResponse[]>;
+    findUnique?(args: {
+      where: { id?: number; email?: string };
+      select?: Record<string, boolean>;
+    }): Promise<AuthUserRecord | null>;
+    create?(args: {
+      data: {
+        name: string;
+        email: string;
+        passwordHash: string;
+        role: AdminUserRole;
+        isActive: boolean;
+        mustChangePassword: true;
+      };
+    }): Promise<AuthUserRecord>;
+    update?(args: {
+      where: { id: number };
+      data: UpdateAdminUserInput | AdminUserCredentialUpdate;
+    }): Promise<AuthUserRecord>;
+    count?(args: {
+      where: { role: AdminUserRole; isActive: true };
+    }): Promise<number>;
+  };
+  session?: {
+    updateMany(args: {
+      where: { userId: number };
+      data: { revokedAt: Date };
+    }): Promise<{ count: number }>;
+  };
+};
+
+const ADMIN_USER_ROLES = new Set<AdminUserRole>([
+  'REQUESTER',
+  'IT_STAFF',
+  'ADMINISTRATOR',
+]);
+
+export class AdminUserValidationError extends Error {
+  constructor(public readonly fieldErrors: Record<string, string>) {
+    super('Administrator User validation failed.');
+  }
+}
+
+export class AdminUserConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+export class AdminUserNotFoundError extends Error {
+  constructor() {
+    super('User not found.');
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseQueryString(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return typeof value === 'string' ? value : null;
+}
+
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const email = value.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254 ? email : null;
+}
+
+export function parseAdminUserQuery(query: unknown): AdminUserQuery {
+  const source = isRecord(query) ? query : {};
+  const fieldErrors: Record<string, string> = {};
+
+  const searchValue = parseQueryString(source.search);
+  if (searchValue === null) {
+    fieldErrors.search = 'Search must be a single text value.';
+  }
+  const search = searchValue?.trim() ?? '';
+  if (search.length > 120) {
+    fieldErrors.search = 'Search must be 120 characters or fewer.';
+  }
+
+  const roleValue = parseQueryString(source.role);
+  if (
+    roleValue !== undefined
+    && (roleValue === null || !ADMIN_USER_ROLES.has(roleValue as AdminUserRole))
+  ) {
+    fieldErrors.role = 'Role must be REQUESTER, IT_STAFF, or ADMINISTRATOR.';
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new AdminUserValidationError(fieldErrors);
+  }
+
+  return {
+    search,
+    ...(roleValue === undefined ? {} : { role: roleValue as AdminUserRole }),
+  };
+}
+
+export function buildAdminUserWhere(query: AdminUserQuery): AdminUserWhere {
+  return {
+    ...(query.search
+      ? {
+          OR: [
+            { name: { contains: query.search, mode: 'insensitive' } },
+            { email: { contains: query.search, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+    ...(query.role ? { role: query.role } : {}),
+  };
+}
+
+export function parseCreateAdminUserPayload(payload: unknown): CreateAdminUserInput {
+  if (!isRecord(payload)) {
+    throw new AdminUserValidationError({ form: 'User details are required.' });
+  }
+
+  const fieldErrors: Record<string, string> = {};
+  const allowedFields = new Set([
+    'name',
+    'email',
+    'role',
+    'isActive',
+    'initialPassword',
+  ]);
+  for (const key of Object.keys(payload)) {
+    if (!allowedFields.has(key)) {
+      fieldErrors[key] = 'This field is not accepted.';
+    }
+  }
+
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+  if (name.length < 1 || name.length > 120) {
+    fieldErrors.name = 'Name must be between 1 and 120 characters after trimming.';
+  }
+
+  const email = normalizeEmail(payload.email);
+  if (!email) {
+    fieldErrors.email = 'A valid email address is required.';
+  }
+
+  const role = payload.role;
+  if (typeof role !== 'string' || !ADMIN_USER_ROLES.has(role as AdminUserRole)) {
+    fieldErrors.role = 'Role must be REQUESTER, IT_STAFF, or ADMINISTRATOR.';
+  }
+
+  if (typeof payload.isActive !== 'boolean') {
+    fieldErrors.isActive = 'Active state must be a boolean.';
+  }
+
+  if (typeof payload.initialPassword !== 'string' || payload.initialPassword.length === 0) {
+    fieldErrors.initialPassword = 'Initial password is required.';
+  } else {
+    const passwordError = validatePassword(payload.initialPassword);
+    if (passwordError) {
+      fieldErrors.initialPassword = passwordError;
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new AdminUserValidationError(fieldErrors);
+  }
+
+  return {
+    name,
+    email: email as string,
+    role: role as AdminUserRole,
+    isActive: payload.isActive as boolean,
+    initialPassword: payload.initialPassword as string,
+  };
+}
+
+export function parseAdminUserId(value: unknown): number {
+  if (
+    typeof value !== 'string'
+    || !/^\d+$/.test(value)
+    || !Number.isSafeInteger(Number(value))
+    || Number(value) <= 0
+  ) {
+    throw new AdminUserValidationError({ userId: 'A valid positive userId is required.' });
+  }
+  return Number(value);
+}
+
+export function parseUpdateAdminUserPayload(payload: unknown): UpdateAdminUserInput {
+  if (!isRecord(payload)) {
+    throw new AdminUserValidationError({ form: 'User update details are required.' });
+  }
+
+  const fieldErrors: Record<string, string> = {};
+  const allowedFields = new Set(['name', 'email', 'role', 'isActive']);
+  for (const key of Object.keys(payload)) {
+    if (!allowedFields.has(key)) {
+      fieldErrors[key] = 'This field is not accepted.';
+    }
+  }
+
+  const update: UpdateAdminUserInput = {};
+  if (Object.hasOwn(payload, 'name')) {
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    if (name.length < 1 || name.length > 120) {
+      fieldErrors.name = 'Name must be between 1 and 120 characters after trimming.';
+    } else {
+      update.name = name;
+    }
+  }
+
+  if (Object.hasOwn(payload, 'email')) {
+    const email = normalizeEmail(payload.email);
+    if (!email) {
+      fieldErrors.email = 'A valid email address is required.';
+    } else {
+      update.email = email;
+    }
+  }
+
+  if (Object.hasOwn(payload, 'role')) {
+    if (typeof payload.role !== 'string' || !ADMIN_USER_ROLES.has(payload.role as AdminUserRole)) {
+      fieldErrors.role = 'Role must be REQUESTER, IT_STAFF, or ADMINISTRATOR.';
+    } else {
+      update.role = payload.role as AdminUserRole;
+    }
+  }
+
+  if (Object.hasOwn(payload, 'isActive')) {
+    if (typeof payload.isActive !== 'boolean') {
+      fieldErrors.isActive = 'Active state must be a boolean.';
+    } else {
+      update.isActive = payload.isActive;
+    }
+  }
+
+  if (Object.keys(update).length === 0 && Object.keys(fieldErrors).length === 0) {
+    fieldErrors.form = 'At least one User field is required.';
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new AdminUserValidationError(fieldErrors);
+  }
+
+  return update;
+}
+
+export function parseInitialPasswordPayload(payload: unknown): InitialPasswordInput {
+  if (!isRecord(payload)) {
+    throw new AdminUserValidationError({ form: 'Initial password details are required.' });
+  }
+
+  const fieldErrors: Record<string, string> = {};
+  for (const key of Object.keys(payload)) {
+    if (key !== 'initialPassword') {
+      fieldErrors[key] = 'This field is not accepted.';
+    }
+  }
+
+  if (typeof payload.initialPassword !== 'string' || payload.initialPassword.length === 0) {
+    fieldErrors.initialPassword = 'Initial password is required.';
+  } else {
+    const passwordError = validatePassword(payload.initialPassword);
+    if (passwordError) {
+      fieldErrors.initialPassword = passwordError;
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    throw new AdminUserValidationError(fieldErrors);
+  }
+
+  return { initialPassword: payload.initialPassword as string };
+}
+
+export function serializeAdminUser(user: AdminUserResponse): AdminUserResponse {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isActive: user.isActive,
+    mustChangePassword: user.mustChangePassword,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+}
+
+export async function listAdminUsers(
+  database: AdminUserDatabase,
+  query: AdminUserQuery,
+): Promise<AdminUserResponse[]> {
+  const users = await database.user.findMany({
+    where: buildAdminUserWhere(query),
+    select: ADMIN_USER_SELECT,
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
+  });
+  return users.map(serializeAdminUser);
+}
+
+export async function createAdminUser(
+  database: AdminUserDatabase,
+  input: CreateAdminUserInput,
+): Promise<AdminUserResponse> {
+  if (!database.user.findUnique || !database.user.create) {
+    throw new Error('Administrator User database access is unavailable.');
+  }
+
+  const existingUser = await database.user.findUnique({
+    where: { email: input.email },
+  });
+  if (existingUser) {
+    throw new AdminUserConflictError('A User with that email already exists.');
+  }
+
+  const passwordHash = await hashPassword(input.initialPassword);
+  const user = await database.user.create({
+    data: {
+      name: input.name,
+      email: input.email,
+      passwordHash,
+      role: input.role,
+      isActive: input.isActive,
+      mustChangePassword: true,
+    },
+  });
+  return serializeAdminUser(user);
+}
+
+async function updateAdminUserInTransaction(
+  database: AdminUserDatabase,
+  userId: number,
+  input: UpdateAdminUserInput,
+  administratorId: number,
+): Promise<AdminUserResponse> {
+  if (!database.user.findUnique || !database.user.update) {
+    throw new Error('Administrator User database access is unavailable.');
+  }
+
+  const targetUser = await database.user.findUnique({
+    where: { id: userId },
+  });
+  if (!targetUser) {
+    throw new AdminUserNotFoundError();
+  }
+
+  if (input.email !== undefined && input.email !== targetUser.email) {
+    const existingUser = await database.user.findUnique({
+      where: { email: input.email },
+    });
+    if (existingUser && existingUser.id !== userId) {
+      throw new AdminUserConflictError('A User with that email already exists.');
+    }
+  }
+
+  const resultingRole = input.role ?? targetUser.role;
+  const resultingIsActive = input.isActive ?? targetUser.isActive;
+
+  if (targetUser.id === administratorId && !resultingIsActive) {
+    throw new AdminUserConflictError('You cannot deactivate your own account.');
+  }
+
+  if (
+    targetUser.role === 'ADMINISTRATOR'
+    && targetUser.isActive
+    && (resultingRole !== 'ADMINISTRATOR' || !resultingIsActive)
+  ) {
+    if (!database.user.count) {
+      throw new Error('Administrator User database access is unavailable.');
+    }
+    const activeAdministrators = await database.user.count({
+      where: { role: 'ADMINISTRATOR', isActive: true },
+    });
+    if (activeAdministrators <= 1) {
+      throw new AdminUserConflictError('At least one active Administrator must remain.');
+    }
+  }
+
+  const updatedUser = await database.user.update({
+    where: { id: userId },
+    data: input,
+  });
+  return serializeAdminUser(updatedUser);
+}
+
+export async function updateAdminUser(
+  database: AdminUserDatabase,
+  userId: number,
+  input: UpdateAdminUserInput,
+  administratorId: number,
+): Promise<AdminUserResponse> {
+  if (database.$transaction) {
+    return database.$transaction((transaction) => updateAdminUserInTransaction(
+      transaction,
+      userId,
+      input,
+      administratorId,
+    ));
+  }
+  return updateAdminUserInTransaction(database, userId, input, administratorId);
+}
+
+async function resetAdminUserPasswordInTransaction(
+  database: AdminUserDatabase,
+  userId: number,
+  input: InitialPasswordInput,
+): Promise<AdminUserResponse> {
+  if (!database.user.findUnique || !database.user.update || !database.session?.updateMany) {
+    throw new Error('Administrator User credential database access is unavailable.');
+  }
+
+  const targetUser = await database.user.findUnique({
+    where: { id: userId },
+  });
+  if (!targetUser) {
+    throw new AdminUserNotFoundError();
+  }
+
+  const passwordHash = await hashPassword(input.initialPassword);
+  const updatedUser = await database.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash,
+      mustChangePassword: true,
+    },
+  });
+  await database.session.updateMany({
+    where: { userId },
+    data: { revokedAt: new Date() },
+  });
+  return serializeAdminUser(updatedUser);
+}
+
+export async function resetAdminUserPassword(
+  database: AdminUserDatabase,
+  userId: number,
+  input: InitialPasswordInput,
+): Promise<AdminUserResponse> {
+  if (database.$transaction) {
+    return database.$transaction((transaction) => resetAdminUserPasswordInTransaction(
+      transaction,
+      userId,
+      input,
+    ));
+  }
+  return resetAdminUserPasswordInTransaction(database, userId, input);
+}
