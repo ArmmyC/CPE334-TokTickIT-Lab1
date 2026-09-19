@@ -37,9 +37,9 @@
 | [#48 Administrator User Management](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/48) | [PR #56](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/56) | `feature/6-lab3-admin-users` | `lab3-staging` | Bank848 | Approved and merged | [820d9bb](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/820d9bb671c9e3bcf23b1c6d9186fce8164cb710) |
 | [#49 E2E, Responsive, and Visual Verification](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/49) | [PR #57](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/57) | `feature/7-lab3-e2e-visual` | `lab3-staging` | Bank848 | Approved and merged | [c3fccc3](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/c3fccc3de62a45eaecdba17d33f6f32213b7c33a) |
 | [#50 Documentation and Evidence](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/50) | [PR #58](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/58) | `docs/lab3-delivery` | `lab3-staging` | Bank848 | Approved and merged | [ad1a0b3](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/ad1a0b31713fc1cbb5c7001451ce286070ec2c7f) |
-| [#51 Staging-to-main Release](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/51) | To be recorded after opening | `release/lab3-to-main` | `main` | Bank848 | Release branch started, PR pending | To be recorded after review and merge |
+| [#51 Staging-to-main Release](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/51) | [PR #59](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/59) | `release/lab3-to-main` | `main` | Bank848 | Open, review requested | To be recorded after review and merge |
 
-At this document version, Issues #49 and #50 are closed and their Project cards are `Done`. Bank848 approved and merged PR #58 into `lab3-staging` as `ad1a0b3`. Issue #51 is `Started` on `release/lab3-to-main`; its release PR, final-main verification, and merge evidence remain pending.
+At this document version, Issues #49 and #50 are closed and their Project cards are `Done`. Bank848 approved and merged PR #58 into `lab3-staging` as `ad1a0b3`. Issue #51 is linked to open PR #59, its Project card is in `PR Review`, and Bank848’s release review and final-main verification remain pending.
 
 ## Review comments and author responses
 
@@ -58,5 +58,5 @@ At this document version, Issues #49 and #50 are closed and their Project cards 
 - Bank848 is the reviewer and merger recorded for the completed Lab 3 Pull Requests #41, #43, and #52 through #58.
 - Every completed PR listed above targets `lab3-staging`, except the future release PR, which must target `main`.
 - Review comments received on completed PRs have a corresponding author response in the linked PR conversation or inline thread.
-- The current Project board has completed implementation and verification cards in `Done`. Issues #49 and #50 were closed after PRs #57 and #58 merged. Issue #51 is open and `Started` while the release gate is prepared.
+- The current Project board has completed implementation and verification cards in `Done`. Issues #49 and #50 were closed after PRs #57 and #58 merged. Issue #51 is open and in `PR Review` while Bank848 reviews PR #59.
 - The final-main approval, merge, verification, and Answer Sheet evidence are intentionally not claimed until the required release PR is merged.
