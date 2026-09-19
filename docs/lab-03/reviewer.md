@@ -36,10 +36,10 @@
 | [#47 IT Staff Ticket Operations](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/47) | [PR #55](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/55) | `feature/5-lab3-staff-ticket-operations` | `lab3-staging` | Bank848 | Approved and merged | [8d83a9f](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/8d83a9f0e68a22838502188760174603f88fdbb9) |
 | [#48 Administrator User Management](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/48) | [PR #56](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/56) | `feature/6-lab3-admin-users` | `lab3-staging` | Bank848 | Approved and merged | [820d9bb](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/820d9bb671c9e3bcf23b1c6d9186fce8164cb710) |
 | [#49 E2E, Responsive, and Visual Verification](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/49) | [PR #57](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/57) | `feature/7-lab3-e2e-visual` | `lab3-staging` | Bank848 | Approved and merged | [c3fccc3](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/commit/c3fccc3de62a45eaecdba17d33f6f32213b7c33a) |
-| [#50 Documentation and Evidence](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/50) | To be recorded after opening | `docs/lab3-delivery` | `lab3-staging` | Bank848 | In progress | To be recorded after review and merge |
+| [#50 Documentation and Evidence](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/50) | [PR #58](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/pull/58) | `docs/lab3-delivery` | `lab3-staging` | Bank848 | Open, review requested | To be recorded after review and merge |
 | [#51 Staging-to-main Release](https://github.com/ArmmyC/CPE334-TokTickIT-Lab1/issues/51) | To be recorded after opening | `release/lab3-to-main` | `main` | Bank848 | Pending documentation merge | To be recorded after review and merge |
 
-At this document version, Issue #49 is closed and its Project card is `Done`. Issue #50 is the active documentation increment. Issue #51 remains in `Backlog` until the documentation PR is approved and merged. The pending rows are deliberately not presented as completed review evidence.
+At this document version, Issue #49 is closed and its Project card is `Done`. Issue #50 is linked to open PR #58 and is awaiting Bank848’s review. Issue #51 remains in `Backlog` until the documentation PR is approved and merged. The pending rows are deliberately not presented as completed review evidence.
 
 ## Review comments and author responses
 
@@ -57,5 +57,5 @@ At this document version, Issue #49 is closed and its Project card is `Done`. Is
 - Bank848 is the reviewer and merger recorded for the completed Lab 3 Pull Requests #41, #43, and #52 through #57.
 - Every completed PR listed above targets `lab3-staging`, except the future release PR, which must target `main`.
 - Review comments received on completed PRs have a corresponding author response in the linked PR conversation or inline thread.
-- The current Project board has completed implementation and verification cards in `Done`. Issue #49 was closed after PR #57 merged. Issues #50 and #51 remain open until their own review and release gates are complete.
+- The current Project board has completed implementation and verification cards in `Done`. Issue #49 was closed after PR #57 merged. Issue #50 is linked to PR #58 and remains open until the documentation merge. Issue #51 remains open until the release gate is complete.
 - The final-main approval, merge, verification, and Answer Sheet evidence are intentionally not claimed until the required release PR is merged.
