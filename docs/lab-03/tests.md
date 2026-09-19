@@ -137,7 +137,7 @@ The E2E suite uses desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 
 
 ## 6. Final verification record
 
-Verification completed on 2026-09-19 from the `docs/lab3-delivery` worktree created directly from the merged `lab3-staging` commit `c3fccc3`:
+Verification rerun on 2026-09-19 from the `release/lab3-to-main` worktree at the merged `lab3-staging` commit `ad1a0b3` from PR #58:
 
 - `npm run test:db:prepare`, the guarded `toktickit_test` database reset, migration, generate, and seed preparation passed.
 - `npm run test:lab3:migration`, 1 test passed.
@@ -146,7 +146,7 @@ Verification completed on 2026-09-19 from the `docs/lab3-delivery` worktree crea
 - `npx playwright test`, 21 tests passed across desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`, including the retained Lab 2 Requester regression flow and the additional Staff error-state flow.
 - E2E evidence was visually inspected, and the no-horizontal-overflow assertion passed for each covered major screen.
 
-This verification was run after Bank848 merged PR #57 into `lab3-staging`. The final-main verification remains pending until the documentation increment and the required staging-to-main release PR are merged by Bank848.
+This verification was run after Bank848 merged PR #58 into `lab3-staging`. The final-main verification remains pending until the required staging-to-main release PR is merged by Bank848.
 
 The local Docker test database used the existing healthy `toktickit` Compose project because creating another Compose network exceeded the host address pool.
 
