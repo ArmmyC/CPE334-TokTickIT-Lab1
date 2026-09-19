@@ -41,7 +41,7 @@ TokTickIT is the CPE334 IT service-desk MVP. Lab 3 replaces the temporary Develo
 
 The Vite frontend runs at http://localhost:5183 and the Express server runs at http://localhost:4000.
 
-The root page retains the Lab 1 `Check System` button. Clicking it calls `GET /api/health` and the protected category endpoint, then shows the backend status and seeded category IDs and names. The authenticated Lab 3 UI is being delivered through the staged Lab 3 Issues.
+The root page retains the Lab 1 `Check System` button. Clicking it calls `GET /api/health` and the protected category endpoint, then shows the backend status and seeded category IDs and names. The authenticated Lab 3 UI is available after setup and uses the seeded Users and role permissions described below.
 
 ## Tests and build
 
@@ -91,6 +91,16 @@ Authentication endpoints are under `/api/auth`: login, current-user discovery, p
 
 The fixed seed contains four active Requesters, one inactive Requester, three active IT Staff, one inactive IT Staff, one active Administrator, the four required Categories, seven Related Systems, Tickets across the documented statuses, and communication records. Re-running it is idempotent.
 
+## Lab 3 role-specific usage
+
+Every seeded account starts in the mandatory first-login password-change flow. Sign in with an account from the table above, save a new password that satisfies the visible rules, and then continue to the route permitted for that role.
+
+- Requester: use My Tickets, Create Ticket, and owned Ticket Detail. Existing Ticket and Attachment behavior remains available, and Ticket Detail also supports Public Comments and the Problem Appears Resolved indication. The old Development Requester selector and Change Requester action are not part of Lab 3.
+- IT Staff: use Ticket Queue to search, filter, sort, paginate, open Ticket Detail, claim or reassign Tickets, change IT Priority, apply permitted status transitions, add Public Comments, and add Internal Notes. IT Staff cannot use Administrator User Management.
+- Administrator: use User Management to list, search, filter, create, edit, activate or deactivate Users, and set a new initial password. Administrators do not receive the Staff Queue navigation. A permitted protected Ticket link provides read-only Ticket communication and the contractually allowed IT Priority edit, while Staff-only mutations remain unavailable.
+
+These seeded accounts are local-development fixtures only. Do not reuse their passwords outside the lab database, and do not commit `.env` or `.env.test`.
+
 ## Lab 2 evidence
 
 Real Playwright screenshots are stored under `artifacts/lab-02/screenshots/create-ticket/`, `artifacts/lab-02/screenshots/my-tickets/`, and `artifacts/lab-02/screenshots/ticket-detail/` for desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`. The individual Lab 2 Answer Sheet and final PDF are prepared and submitted on the course platform, not stored in this repository. Any local submission output and temporary render files remain ignored by Git.
@@ -104,6 +114,12 @@ Start PostgreSQL, apply all migrations, generate the Prisma client, and seed the
     npm run db:seed
 
 The repeatable seed preserves the four Lab 1 Categories and seven Lab 2 Related Systems, converts or upserts the required Users, and adds the Lab 3 workflow fixtures without duplicate Tickets, comments, or notes.
+
+## Lab 3 repository workflow
+
+Lab 3 uses `main` as the stable branch and `lab3-staging` as the integration branch. Each Issue is implemented on its required branch, reviewed by Bank848, and merged by Bank848 into `lab3-staging`. The documentation increment uses `docs/lab3-delivery`, followed by the required release branch `release/lab3-to-main` from `lab3-staging` to `main`. Do not push directly to `lab3-staging` or `main`.
+
+The Lab 3 verification matrix is discovered by `playwright.config.ts` from `e2e/lab-02/` and `e2e/lab-03/`. The current matrix contains the retained Lab 2 Requester regression flow plus the Lab 3 authentication, Requester, Staff, and Administrator flows. Real screenshot evidence is stored only under the four required `artifacts/lab-03/screenshots/` directories. The Answer Sheet and final PDF are external submission artifacts and stay outside Git.
 
 ## Lab 1 Git workflow
 
