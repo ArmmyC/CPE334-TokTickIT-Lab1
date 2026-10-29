@@ -1,4 +1,5 @@
 import type { AuthUserRole } from '../auth/types.js';
+import { serializeActionTaken, type ActionTakenRecord } from './actions-taken.js';
 
 export type StaffTicketStatus =
   | 'NEW'
@@ -52,6 +53,8 @@ export type StaffTicketBaseRecord = {
   requesterResolvedBy: StaffTicketAuthor | null;
   createdAt: Date;
   updatedAt: Date;
+  version: number;
+  lastStaffActivityAt: Date;
   requester: {
     id: number;
     name: string;
@@ -77,6 +80,7 @@ export type StaffTicketDetailRecord = StaffTicketBaseRecord & {
   attachments: StaffTicketAttachmentRecord[];
   publicComments: StaffTicketCommunicationRecord[];
   internalNotes: StaffTicketCommunicationRecord[];
+  actionsTaken: ActionTakenRecord[];
 };
 
 export type StaffTicketDetailDatabase = {
@@ -129,6 +133,13 @@ export type StaffTicketDetailDatabase = {
       data: { ticketId: number; authorId: number; content: string };
     }): Promise<StaffTicketCommunicationRecord>;
   };
+  actionTaken?: {
+    findMany(args: {
+      where: { ticketId: number };
+      orderBy: Array<{ actionAt: 'asc' } | { id: 'asc' }>;
+      select: Record<string, unknown>;
+    }): Promise<ActionTakenRecord[]>;
+  };
 };
 
 export const STAFF_TICKET_DETAIL_SELECT = {
@@ -146,6 +157,8 @@ export const STAFF_TICKET_DETAIL_SELECT = {
   },
   createdAt: true,
   updatedAt: true,
+  version: true,
+  lastStaffActivityAt: true,
   requester: {
     select: { id: true, name: true, email: true },
   },
@@ -377,6 +390,7 @@ export function serializeStaffTicketDetail(
     attachments: ticket.attachments.map(serializeStaffAttachment),
     publicComments: ticket.publicComments.map(serializeCommunication),
     internalNotes: ticket.internalNotes.map(serializeCommunication),
+    actionsTaken: ticket.actionsTaken.map((action) => serializeActionTaken(action, true)),
     requesterResolution: ticket.requesterResolvedAt && ticket.requesterResolvedBy
       ? {
           resolvedAt: ticket.requesterResolvedAt,
@@ -385,5 +399,7 @@ export function serializeStaffTicketDetail(
       : null,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
+    version: ticket.version,
+    lastActivityAt: ticket.lastStaffActivityAt,
   };
 }

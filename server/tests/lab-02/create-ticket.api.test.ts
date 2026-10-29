@@ -53,7 +53,7 @@ function createSeedHarness() {
 }
 
 describe('Lab 2 reference data seed', () => {
-  it('exposes the Lab 3 identity models while retaining Lab 2 Ticket fields and indexes', () => {
+  it('exposes Lab 3 and Lab 4 models while retaining Lab 2 Ticket fields and indexes', () => {
     const modelNames = Prisma.dmmf.datamodel.models.map(({ name }) => name);
     const ticket = Prisma.dmmf.datamodel.models.find(({ name }) => name === 'Ticket');
     const attachment = Prisma.dmmf.datamodel.models.find(({ name }) => name === 'Attachment');
@@ -74,6 +74,8 @@ describe('Lab 2 reference data seed', () => {
       'Attachment',
       'PublicComment',
       'InternalNote',
+      'ActionTaken',
+      'TicketStatusHistory',
     ]);
     expect(ticket?.fields.find(({ name }) => name === 'ticketNumber')?.isUnique).toBe(true);
     expect(ticket?.fields.find(({ name }) => name === 'currentStatus')?.default).toBe('NEW');
@@ -95,6 +97,7 @@ describe('Lab 2 reference data seed', () => {
         'CANCELLED',
       ],
       UserRole: ['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'],
+      TicketStatusHistoryEventKind: ['INITIAL', 'TRANSITION', 'LEGACY_BASELINE'],
     });
     expect(schema).toContain('@@index([requesterId, updatedAt, id])');
     expect(schema).toContain('@@index([categoryId])');

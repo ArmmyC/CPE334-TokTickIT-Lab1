@@ -40,6 +40,9 @@ model User {
   resolvedTickets Ticket[] @relation("TicketRequesterResolution")
   publicComments PublicComment[]
   internalNotes InternalNote[]
+  performedActions ActionTaken[] @relation("ActionTakenPerformer")
+  editedActions ActionTaken[] @relation("ActionTakenEditor")
+  statusHistoryEvents TicketStatusHistory[] @relation("StatusHistoryActor")
 
   @@index([role, isActive])
 }
@@ -77,6 +80,9 @@ model Ticket {
   requestedPriority RequestedPriority
   itPriority        TicketPriority?
   currentStatus     TicketStatus         @default(NEW)
+  version           Int                  @default(0)
+  lastStaffActivityAt DateTime            @default(now())
+  lastRequesterVisibleActivityAt DateTime @default(now())
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   requester         User                 @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
@@ -87,9 +93,13 @@ model Ticket {
   attachments       Attachment[]
   publicComments    PublicComment[]
   internalNotes     InternalNote[]
+  actionsTaken      ActionTaken[]
+  statusHistory     TicketStatusHistory[]
 
   @@index([requesterId, updatedAt, id])
   @@index([ownerId, updatedAt, id])
+  @@index([requesterId, lastRequesterVisibleActivityAt, id])
+  @@index([ownerId, lastStaffActivityAt, id])
   @@index([categoryId])
   @@index([relatedSystemId])
   @@index([requestedPriority])
@@ -138,6 +148,46 @@ model InternalNote {
   @@index([authorId])
 }
 
+model ActionTaken {
+  id                      Int      @id @default(autoincrement())
+  ticketId                Int
+  actionAt                DateTime @db.Timestamp(3)
+  description             String   @db.VarChar(4000)
+  result                  String   @db.VarChar(4000)
+  performedById           Int
+  followUpRequired        Boolean
+  followUpCompleted       Boolean  @default(false)
+  followUpNote            String?  @db.VarChar(2000)
+  attachmentNotes         String?  @db.VarChar(2000)
+  idempotencyKey          String   @db.Uuid
+  idempotencyPayloadHash  String   @db.VarChar(64)
+  version                 Int      @default(1)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  updatedById             Int
+  ticket                  Ticket   @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  performedBy             User     @relation("ActionTakenPerformer", fields: [performedById], references: [id], onDelete: Restrict)
+  updatedBy               User     @relation("ActionTakenEditor", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([performedById, idempotencyKey])
+  @@index([ticketId, actionAt, id])
+  @@index([performedById, actionAt, id])
+}
+
+model TicketStatusHistory {
+  id         Int                         @id @default(autoincrement())
+  ticketId   Int
+  fromStatus TicketStatus?
+  toStatus   TicketStatus
+  actorId    Int?
+  eventKind  TicketStatusHistoryEventKind
+  createdAt  DateTime                    @default(now())
+  ticket     Ticket                      @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  actor      User?                       @relation("StatusHistoryActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt, id])
+}
+
 enum RequestedPriority {
   LOW
   MEDIUM
@@ -167,4 +217,10 @@ enum UserRole {
   REQUESTER
   IT_STAFF
   ADMINISTRATOR
+}
+
+enum TicketStatusHistoryEventKind {
+  INITIAL
+  TRANSITION
+  LEGACY_BASELINE
 }

@@ -27,6 +27,8 @@ const detailTicket = {
   requestedPriority: 'HIGH',
   itPriority: 'URGENT',
   currentStatus: 'IN_PROGRESS',
+  version: 0,
+  lastStaffActivityAt: updatedAt,
   createdAt: ticketDate,
   updatedAt,
   requester: {
@@ -174,6 +176,7 @@ describe('Lab 3 Staff Ticket Detail API', () => {
         requestedPriority: 'HIGH',
         itPriority: 'URGENT',
         currentStatus: 'IN_PROGRESS',
+        actionsTaken: [],
         owner: { id: 3, name: 'Somsak Staff', email: 'somsak@example.test', role: 'IT_STAFF' },
         attachments: [{
           id: 7,
@@ -204,6 +207,8 @@ describe('Lab 3 Staff Ticket Detail API', () => {
         },
         createdAt: ticketDate.toISOString(),
         updatedAt: updatedAt.toISOString(),
+        version: 0,
+        lastActivityAt: updatedAt.toISOString(),
       },
     });
     expect(JSON.stringify(response.body)).not.toContain('storageKey');
