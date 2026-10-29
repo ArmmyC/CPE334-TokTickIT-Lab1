@@ -16,7 +16,7 @@ Test database safety follows the Lab 3 guard: destructive preparation must verif
 
 | Test ID | Type | Requirement / AC | What it tests | Expected result | Automated test file | Final status |
 | --- | --- | --- | --- | --- | --- | --- |
-| UNIT-01 | Unit | BR-07–BR-10, AC-01, AC-04, AC-19 | Action field parsing, trimming, lengths, future timestamps, follow-up note/completion invariants, UTC conversion | Valid boundaries pass; completion cannot be true when follow-up is not required or on creation; invalid values return field errors without persistence | `server/tests/lab-04/action-validation.test.ts` | Pass, 7 tests |
+| UNIT-01 | Unit | BR-07–BR-10, AC-01, AC-04, AC-19 | Action field parsing, trimming, lengths, future timestamps, follow-up note/completion invariants, UTC conversion | Valid boundaries pass; completion cannot be true when follow-up is not required or on creation; invalid values return field errors without persistence | `server/tests/lab-04/action-validation.test.ts` | Pass, 8 tests |
 | UNIT-02 | Unit | BR-06, BR-08, AC-05, AC-06 | Complete status matrix, confirmation rules, resolution gate | Only allowed transitions with required confirmation pass; gate failure leaves state unchanged | `server/tests/lab-04/workflow-rules.test.ts` | Planned |
 | UNIT-03 | Unit | BR-16–BR-21, AC-09–AC-11 | Dashboard status sets, seven-day boundaries, zero counts, role-specific activity windows, stable sort | Counts and list ordering match fixed-clock fixtures | `server/tests/lab-04/dashboard-metrics.test.ts` | Planned |
 | MIG-01 | Migration / regression | BR-12, BR-13, BR-22, BR-23, AC-07, AC-12 | Apply migration to populated Lab 3 schema, compare old table IDs/counts/relationships/statuses, create truthful history baseline and activity timestamps, verify legacy baselines are not recent resolution events, then issue raw database UPDATE and DELETE against a history row in separate transactions | Existing business rows are preserved; legacy Tickets have zero Actions Taken and one labeled baseline event; each raw history mutation is rejected by the database trigger and the row remains unchanged; failed migration can be recovered in disposable schema | `server/tests/lab-04/migration.test.ts` | Pass, 2 tests |
@@ -103,14 +103,16 @@ npm test --workspace server -- tests/lab-04/seed.test.ts
 npm run test:e2e
 ```
 
-Run the targeted Lab 4 API and unit tests through the corresponding workspace Vitest command. Run dashboard performance smoke separately so its timing output is recorded. Run the test database guard before any destructive test preparation. These commands are planned only; no test result is claimed in this draft.
+Run the targeted Lab 4 API and unit tests through the corresponding workspace Vitest command. Run dashboard performance smoke separately so its timing output is recorded. Run the test database guard before any destructive test preparation. The command block is the planned release-verification set; branch-level results are recorded below.
 
-### Issue #65 branch verification, 2026-10-29
+### Issue #65 branch verification, 2026-10-30
 
-- `npm test` passed, 156 server tests and 76 client tests.
+- `npm test` passed, 157 server tests and 76 client tests.
 - `npx playwright test` passed, 21 Lab 2–3 browser checks across desktop, tablet, and mobile.
 - `server/tests/lab-04/migration.test.ts`, `server/tests/lab-04/seed.test.ts`, and `server/tests/lab-03/migration.test.ts` passed, 4 integration tests total.
 - `npm run build` passed for the server and client.
+- The review regression checks passed, including rejection of impossible calendar dates and repair of the exact legacy seeded-completion state. The repaired action has a separate completion editor and version 2, its Ticket version increments once, and a repeated seed leaves both unchanged.
+- During an earlier `npm test` run that overlapped Playwright, `RequesterTicketDetail.test.tsx` failed once because its deferred API response resolver had not yet been set. The targeted file passed alone, then the complete `npm test` rerun passed after Playwright ended. No Lab 2 or Lab 3 source or test files were changed.
 
 These results validate the current Issue #65 branch. They do not replace the required final regression and evidence verification from `main` after the reviewed release merge.
 

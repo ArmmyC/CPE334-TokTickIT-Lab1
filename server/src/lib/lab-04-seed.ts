@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import {
   createActionTakenFingerprint,
@@ -13,6 +14,7 @@ type ActionTakenSeed = {
   result: string;
   followUpRequired: boolean;
   followUpCompleted: boolean;
+  completionEditorEmail?: string;
   followUpNote: string | null;
   attachmentNotes: string | null;
 };
@@ -63,6 +65,7 @@ const ACTION_TAKEN_SEEDS: readonly ActionTakenSeed[] = [
     result: 'The queued test page printed successfully.',
     followUpRequired: true,
     followUpCompleted: true,
+    completionEditorEmail: 'somchai@example.test',
     followUpNote: 'Confirm the next requester print job completes normally.',
     attachmentNotes: null,
   },
@@ -100,7 +103,7 @@ function isUniqueConflict(error: unknown): boolean {
 }
 
 async function ensureSeedAction(database: PrismaClient, seed: ActionTakenSeed): Promise<void> {
-  const [ticket, performer] = await Promise.all([
+  const [ticket, performer, completionEditor] = await Promise.all([
     database.ticket.findUnique({
       where: { ticketNumber: seed.ticketNumber },
       select: { id: true },
@@ -109,8 +112,14 @@ async function ensureSeedAction(database: PrismaClient, seed: ActionTakenSeed): 
       where: { email: seed.performerEmail },
       select: { id: true },
     }),
+    seed.followUpCompleted
+      ? database.user.findUnique({
+          where: { email: seed.completionEditorEmail ?? seed.performerEmail },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
   ]);
-  if (!ticket || !performer) {
+  if (!ticket || !performer || (seed.followUpCompleted && !completionEditor)) {
     throw new Error(`Lab 4 seed requires Ticket ${seed.ticketNumber} and user ${seed.performerEmail}.`);
   }
 
@@ -128,16 +137,84 @@ async function ensureSeedAction(database: PrismaClient, seed: ActionTakenSeed): 
     await database.$transaction(async (transaction) => {
       const existing = await transaction.actionTaken.findUnique({
         where,
-        select: { id: true, idempotencyPayloadHash: true },
+        select: {
+          id: true,
+          idempotencyPayloadHash: true,
+          followUpRequired: true,
+          followUpCompleted: true,
+          version: true,
+          updatedById: true,
+        },
       });
       if (existing) {
         if (existing.idempotencyPayloadHash !== payloadHash) {
           throw new Error(`Lab 4 seed key is already bound to different data for ${seed.ticketNumber}.`);
         }
+
+        const isLegacyCompletedSeed = seed.followUpCompleted
+          && existing.followUpRequired
+          && existing.followUpCompleted
+          && existing.version === 1
+          && existing.updatedById === performer.id;
+        if (isLegacyCompletedSeed) {
+          const lockedTickets = await transaction.$queryRaw<Array<{ id: number }>>(
+            Prisma.sql`SELECT "id" FROM "Ticket" WHERE "id" = ${ticket.id} FOR UPDATE`,
+          );
+          if (lockedTickets.length === 0) {
+            throw new Error(`Lab 4 seed Ticket ${seed.ticketNumber} no longer exists.`);
+          }
+
+          const current = await transaction.actionTaken.findUnique({
+            where,
+            select: {
+              id: true,
+              idempotencyPayloadHash: true,
+              followUpRequired: true,
+              followUpCompleted: true,
+              version: true,
+              updatedById: true,
+            },
+          });
+          if (!current || current.idempotencyPayloadHash !== payloadHash) {
+            throw new Error(`Lab 4 seed key changed while repairing ${seed.ticketNumber}.`);
+          }
+          const stillLegacyCompletedSeed = current.followUpRequired
+            && current.followUpCompleted
+            && current.version === 1
+            && current.updatedById === performer.id;
+          if (!stillLegacyCompletedSeed) return;
+
+          const repaired = await transaction.actionTaken.updateMany({
+            where: {
+              id: current.id,
+              ticketId: ticket.id,
+              idempotencyPayloadHash: payloadHash,
+              followUpRequired: true,
+              followUpCompleted: true,
+              version: 1,
+              updatedById: performer.id,
+            },
+            data: {
+              version: { increment: 1 },
+              updatedAt: now,
+              updatedById: completionEditor!.id,
+            },
+          });
+          if (repaired.count === 1) {
+            await transaction.ticket.update({
+              where: { id: ticket.id },
+              data: {
+                version: { increment: 1 },
+                lastStaffActivityAt: now,
+                lastRequesterVisibleActivityAt: now,
+              },
+            });
+          }
+        }
         return;
       }
 
-      await transaction.actionTaken.create({
+      const created = await transaction.actionTaken.create({
         data: {
           ticketId: ticket.id,
           actionAt: input.actionAt,
@@ -145,7 +222,7 @@ async function ensureSeedAction(database: PrismaClient, seed: ActionTakenSeed): 
           result: input.result,
           performedById: performer.id,
           followUpRequired: input.followUpRequired,
-          followUpCompleted: seed.followUpCompleted,
+          followUpCompleted: false,
           followUpNote: input.followUpNote,
           attachmentNotes: input.attachmentNotes,
           idempotencyKey: seed.idempotencyKey,
@@ -153,6 +230,7 @@ async function ensureSeedAction(database: PrismaClient, seed: ActionTakenSeed): 
           version: 1,
           updatedById: performer.id,
         },
+        select: { id: true },
       });
       await transaction.ticket.update({
         where: { id: ticket.id },
@@ -162,6 +240,26 @@ async function ensureSeedAction(database: PrismaClient, seed: ActionTakenSeed): 
           lastRequesterVisibleActivityAt: now,
         },
       });
+      if (seed.followUpCompleted) {
+        await transaction.actionTaken.update({
+          where: { id: created.id },
+          data: {
+            followUpCompleted: true,
+            version: { increment: 1 },
+            updatedAt: now,
+            updatedById: completionEditor!.id,
+          },
+          select: { id: true },
+        });
+        await transaction.ticket.update({
+          where: { id: ticket.id },
+          data: {
+            version: { increment: 1 },
+            lastStaffActivityAt: now,
+            lastRequesterVisibleActivityAt: now,
+          },
+        });
+      }
     });
   } catch (error) {
     if (!isUniqueConflict(error)) throw error;

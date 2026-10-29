@@ -42,6 +42,15 @@ describe('Lab 4 Action Taken validation', () => {
     }
   });
 
+  it('rejects impossible calendar dates instead of normalizing them', () => {
+    expect(() => parseCreateActionTakenPayload({
+      actionAt: '2026-02-30T12:00:00Z',
+      description: 'Replaced the power adapter.',
+      result: 'The workstation starts normally.',
+      followUpRequired: false,
+    }, fixedNow)).toThrow(ActionTakenValidationError);
+  });
+
   it('requires a non-blank Follow-up Note when follow-up is required', () => {
     let error: unknown;
     try {

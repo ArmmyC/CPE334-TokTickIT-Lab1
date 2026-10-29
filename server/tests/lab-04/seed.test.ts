@@ -21,15 +21,42 @@ describe('Lab 4 idempotent data seeds', () => {
     });
 
     await seedLab4Data(database);
+    const legacyCompletedAction = await database.actionTaken.findFirst({
+      where: { idempotencyKey: '00000004-0000-4000-8000-000000000204' },
+      select: { id: true, ticketId: true, performedById: true, createdAt: true },
+    });
+    expect(legacyCompletedAction).not.toBeNull();
+    if (!legacyCompletedAction) throw new Error('Expected the seeded follow-up Action Taken.');
+
+    // Recreate the prior seed behavior so a rerun proves it repairs only that legacy fixture state.
+    await database.$transaction(async (transaction) => {
+      await transaction.actionTaken.update({
+        where: { id: legacyCompletedAction.id },
+        data: {
+          followUpCompleted: true,
+          version: 1,
+          updatedAt: legacyCompletedAction.createdAt,
+          updatedById: legacyCompletedAction.performedById,
+        },
+      });
+      await transaction.ticket.update({
+        where: { id: legacyCompletedAction.ticketId },
+        data: { version: 1 },
+      });
+    });
+    await seedLab4Data(database);
+
     const firstRun = await database.actionTaken.findMany({
       select: {
         id: true,
         ticketId: true,
         performedById: true,
+        updatedById: true,
         idempotencyKey: true,
         followUpRequired: true,
         followUpCompleted: true,
-        ticket: { select: { ownerId: true, currentStatus: true } },
+        version: true,
+        ticket: { select: { ownerId: true, currentStatus: true, version: true } },
       },
       orderBy: [{ performedById: 'asc' }, { idempotencyKey: 'asc' }],
     });
@@ -40,10 +67,12 @@ describe('Lab 4 idempotent data seeds', () => {
         id: true,
         ticketId: true,
         performedById: true,
+        updatedById: true,
         idempotencyKey: true,
         followUpRequired: true,
         followUpCompleted: true,
-        ticket: { select: { ownerId: true, currentStatus: true } },
+        version: true,
+        ticket: { select: { ownerId: true, currentStatus: true, version: true } },
       },
       orderBy: [{ performedById: 'asc' }, { idempotencyKey: 'asc' }],
     });
@@ -71,6 +100,10 @@ describe('Lab 4 idempotent data seeds', () => {
     expect(firstRun.some((action) => action.followUpRequired && !action.followUpCompleted)).toBe(true);
     expect(firstRun.some((action) => action.followUpRequired && action.followUpCompleted)).toBe(true);
     expect(firstRun.some((action) => !action.followUpRequired && !action.followUpCompleted)).toBe(true);
+    const completedFollowUp = firstRun.find((action) => action.followUpRequired && action.followUpCompleted);
+    expect(completedFollowUp?.version).toBe(2);
+    expect(completedFollowUp?.updatedById).not.toBe(completedFollowUp?.performedById);
+    expect(completedFollowUp?.ticket.version).toBe(2);
 
     const ticketActionCounts = new Map<number, number>();
     for (const action of firstRun) {

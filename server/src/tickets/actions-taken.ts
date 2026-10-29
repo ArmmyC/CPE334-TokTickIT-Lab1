@@ -145,9 +145,32 @@ function hasOnlyFields(
 }
 
 function parseActionAt(value: unknown, now: Date, fieldErrors: Record<string, string>): Date | null {
-  if (typeof value !== 'string'
-      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+  if (typeof value !== 'string') {
     fieldErrors.actionAt = 'Action Date/Time must be an offset-aware ISO 8601 timestamp.';
+    return null;
+  }
+
+  const timestamp = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  if (!timestamp) {
+    fieldErrors.actionAt = 'Action Date/Time must be an offset-aware ISO 8601 timestamp.';
+    return null;
+  }
+
+  const year = Number(timestamp[1]);
+  const month = Number(timestamp[2]);
+  const day = Number(timestamp[3]);
+  const hour = Number(timestamp[4]);
+  const minute = Number(timestamp[5]);
+  const second = Number(timestamp[6]);
+  const offsetHour = timestamp[8] === undefined ? 0 : Number(timestamp[8]);
+  const offsetMinute = timestamp[9] === undefined ? 0 : Number(timestamp[9]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12
+      || day < 1 || day > daysInMonth[month - 1]!
+      || hour > 23 || minute > 59 || second > 59
+      || offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) {
+    fieldErrors.actionAt = 'Action Date/Time must be a valid timestamp.';
     return null;
   }
 
