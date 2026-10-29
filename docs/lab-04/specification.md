@@ -51,7 +51,7 @@ Dashboards summarize the current operational data and link to the detailed Ticke
 ### Ticket workflow
 
 - **FR-06:** The backend shall enforce the complete status transition matrix in BR-06. The UI shall show only transitions allowed from the current status, and the server remains authoritative.
-- **FR-07:** A transition to Resolved shall satisfy the proposed resolution gate in BR-08. The transition to Closed shall require the Ticket to be Resolved and pass the same gate.
+- **FR-07:** A transition to Resolved shall satisfy the resolution gate defined in BR-08. The transition to Closed shall require the Ticket to be Resolved and pass the same gate.
 - **FR-08:** Each initial status and successful formal status transition shall add a Ticket status-history event. Status-history records shall be append-only, have deterministic ordering, and be visible only to roles permitted to see the Ticket.
 - **FR-09:** The existing Requester “Problem Appears Resolved” action shall remain advisory. It shall not set the formal Ticket status or bypass the IT Staff resolution gate.
 
