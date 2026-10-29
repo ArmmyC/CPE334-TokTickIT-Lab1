@@ -1,6 +1,6 @@
 # Lab 4 UI Specification
 
-**Status:** Draft for student review. Product implementation remains blocked until the student approves this document with the other three contract files.
+**Status:** Approved by the student. Implementation may begin after PR #71 comments are resolved and the reviewer merges it to `lab4-staging`.
 **Visual baseline:** Reuse the Lab 2–3 Zen Green system and shared AuthenticatedShell.
 
 ## 1. Design Tokens and Shared Rules
@@ -71,7 +71,7 @@ The dashboard does not offer custom reports, exports, or additional analytics. T
 ### List and read-only view
 
 - Place an **Actions Taken** section in Staff and Requester Ticket Detail.
-- Show one row/card per action with Action Date/Time, Action Description, Result, Follow-Up Required, Follow-up Note when required, Attachment Notes when present, Performed by, and latest edit metadata for staff.
+- Show one row/card per action with Action Date/Time, Action Description, Result, Follow-Up Required, Follow-Up Completed, Follow-up Note when required, Attachment Notes when present, Performed by, and latest edit metadata for staff.
 - Staff sees actions in stable Action Date/Time ascending, then record ID order. The most recent entry remains easy to reach on mobile.
 - The primary Ticket Owner appears in the Ticket summary, separate from the action performer.
 - Requesters see the complete approved Action Taken information for their own Tickets, read-only.
@@ -79,13 +79,14 @@ The dashboard does not offer custom reports, exports, or additional analytics. T
 
 ### Create mode
 
-IT Staff and Administrators see **Add Action Taken** on Tickets they can access. The form contains:
+IT Staff and Administrators see **Add Action Taken** only while the Ticket is active (statuses NEW, OPEN, IN_PROGRESS, WAITING_FOR_REQUESTER, or REOPENED). The form contains:
 
 - Action Date/Time, with the current local date/time as the initial value.
 - Action Description, required.
 - Result, required.
 - Performed by, display-only and populated from the signed-in actor.
 - Follow-Up Required, required yes/no control.
+- Follow-Up Completed, displayed as **Not completed** on creation and not editable until the Action Taken is saved.
 - Follow-up Note, shown and required when follow-up is yes.
 - Attachment Notes, optional plain text describing what file to look for.
 
@@ -95,15 +96,18 @@ The form does not expose Ticket Owner, performer ID, Ticket ID, status, or any u
 
 - Existing actions begin in a read-only view.
 - An authorized Staff/Admin editor can enter edit mode for that action and save in place.
+- If Follow-Up Required is yes, edit mode allows the editor to mark Follow-Up Completed after the work is done. Completion does not clear the required flag or follow-up note. If Follow-Up Required is no, the completion state remains false.
 - Performed by is immutable in edit mode. Show the original performer and the current editor separately.
 - Edits use the current record version. On stale conflict, keep the user's unsaved values, show a safe conflict message, and provide a way to reload the current version before retrying.
+- On RESOLVED, CLOSED, or CANCELLED Tickets, actions remain visible read-only. Hide Add/Edit controls and explain that IT Staff must reopen the Ticket before an action can be added or edited. If a Ticket becomes terminal while a form is open, preserve the values and show the server's ACTION_TAKEN_LOCKED response.
+- After a successful create/edit, refresh Ticket Detail so its Ticket version and resolution-gate state are current.
 - There is no delete button, revision timeline, or append-only Action Taken mode.
 
 ## 6. Ticket Workflow and Status History
 
 - Show the current status and only the permitted next status options from the transition matrix.
 - Require confirmation for Resolved, Closed, and Cancelled transitions.
-- If the resolution gate fails, explain which condition must be satisfied and link to Actions Taken. Do not pretend that the Requester's advisory resolution indication changes status.
+- If the resolution gate fails, explain that at least one Action Taken is required and every required follow-up must be marked complete, then link to Actions Taken. Do not pretend that the Requester's advisory resolution indication changes status.
 - Show status history in chronological order with previous status, next status, actor or “Legacy baseline,” and local-time timestamp.
 - Status history is read-only. No edit/delete control appears for any role.
 - On a stale Ticket version, preserve the selected form state, explain that another update occurred, and offer refresh/review of the current Ticket before another submit.
@@ -129,13 +133,15 @@ Use the existing CSS breakpoints: tablet navigation/layout at 991px and mobile r
 
 ## 9. Accessibility
 
-- Use semantic landmarks, one page-level heading, ordered subsection headings, and real table headers when a table is used.
-- Every control has an associated visible label or accessible name. Required state and validation text are programmatically associated.
-- Keyboard focus remains visible with the specified outline. All create/edit/status flows work without a pointer.
-- Status and follow-up are conveyed by text as well as color.
-- Loading and save progress are announced. Dialogs, if used for confirmations, trap focus appropriately, close with Escape where safe, and restore focus to their trigger.
-- Preserve focus on a validation failure and move it to the error summary only when necessary.
-- Text content from Actions Taken and Ticket history is rendered as text, never injected HTML.
+- [ ] Use semantic landmarks, one page-level heading, ordered subsection headings, and real table headers when a table is used.
+- [ ] Every control has an associated visible label or accessible name. Required state and validation text are programmatically associated.
+- [ ] Keyboard focus remains visible with the specified outline. All create/edit/status flows work without a pointer.
+- [ ] Status and follow-up are conveyed by text as well as color.
+- [ ] Loading and save progress are announced. Dialogs, if used for confirmations, trap focus appropriately, close with Escape where safe, and restore focus to their trigger.
+- [ ] Preserve focus on a validation failure and move it to the error summary only when necessary.
+- [ ] Text content from Actions Taken and Ticket history is rendered as text, never injected HTML.
+- [ ] Follow-Up Required and Follow-Up Completed have separate visible labels so completion never looks like the original requirement was removed.
+- [ ] Record the manual audit date, tested role and viewport, and any findings in the Lab 4 Issue or PR evidence. This checklist is not an automated test result.
 
 ## 10. Screenshot Evidence and Visual Checklist
 

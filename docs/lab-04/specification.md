@@ -1,6 +1,6 @@
 # Lab 4 Engineering Specification
 
-**Status:** Draft for student review. The student must approve this contract before product implementation begins.
+**Status:** Approved by the student. Product implementation may begin after the Issue #64 PR is reviewed, its comments are resolved, and it is merged to `lab4-staging`.
 **Staging branch:** `lab4-staging`
 **Release target:** `main`
 **Lab 3 baseline:** PR #63, the Lab 3 screenshot integration, merged to `lab3-staging`.
@@ -42,8 +42,8 @@ Dashboards summarize the current operational data and link to the detailed Ticke
 
 ### Actions Taken
 
-- **FR-01:** The application shall allow an authorized IT Staff member or Administrator to create and update Actions Taken on an accessible Ticket. Actions Taken are editable in place and are not append-only revisions. There is no delete operation.
-- **FR-02:** An Action Taken shall contain Action Date/Time, Action Description, Result, Performed by, Follow-Up Required, Follow-up Note, and Attachment Notes.
+- **FR-01:** The application shall allow an authorized IT Staff member or Administrator to create and update Actions Taken on an accessible active Ticket. Actions Taken are editable in place and are not append-only revisions. There is no delete operation. Resolved, Closed, and Cancelled Tickets are read-only for Actions Taken until reopened.
+- **FR-02:** An Action Taken shall contain Action Date/Time, Action Description, Result, Performed by, Follow-Up Required, Follow-up Note, Attachment Notes, and a separate Follow-Up Completed state.
 - **FR-03:** The server shall derive Performed by from the authenticated actor on creation. The Ticket Owner and Action performer shall remain independent values. An edit by another staff member shall preserve the original performer and record the editor separately.
 - **FR-04:** Requesters shall read Actions Taken only on their own Tickets. They shall not create or update them. The backend shall enforce these rules even when a client bypasses the UI.
 - **FR-05:** The Requester-facing Action Taken fields shall be treated as visible to the Ticket's Requester. Internal Staff-only content shall continue to use Internal Notes.
@@ -71,6 +71,7 @@ Dashboards summarize the current operational data and link to the detailed Ticke
 - **FR-18:** Major Lab 4 screens shall support desktop, tablet, mobile, keyboard use, accessible labels and feedback, and the existing Zen Green design system.
 - **FR-19:** Genuine screenshots shall be stored under the three exact paths in the Lab 4 sheet and included through reviewed PRs. The Answer Sheet and final PDF remain outside Git.
 - **FR-20:** Existing Ticket Owner assignment shall remain available to permitted IT Staff. Only active eligible IT Staff or Administrators can be assigned. The server shall reject inactive or ineligible assignees without changing the current Owner. Assignment remains separate from Action Taken Performed by.
+- **FR-21:** The backend shall reject Action Taken create/edit requests when a Ticket is Resolved, Closed, or Cancelled. Staff must reopen the Ticket before changing Actions Taken.
 
 ## 5. Business Rules
 
@@ -100,16 +101,16 @@ Dashboards summarize the current operational data and link to the detailed Ticke
 The backend rejects all unlisted transitions. A Requester resolution indication is not a transition.
 
 - **BR-07:** Action Date/Time is the time the work occurred, supplied as an offset-aware ISO 8601 timestamp and stored/returned in UTC. It may be historical but not in the future. `createdAt` and `updatedAt` are server-managed.
-- **BR-08 (proposed resolution gate, pending student approval):** A Ticket may enter `RESOLVED` only when it has at least one Action Taken and every Action Taken has `followUpRequired = false`. `CLOSED` requires a current `RESOLVED` state and the same gate. Creating or editing an Action Taken on a Resolved or Closed Ticket is allowed only if the resulting set still satisfies the gate. A write that would break the gate is rejected with a safe conflict, and staff must reopen the Ticket before recording an action that requires follow-up. This rule is a proposal for student review, not an approved implementation contract yet.
-- **BR-09:** `followUpNote` is required and non-blank when `followUpRequired = true`. When false, the server stores it as null. Attachment Notes are optional plain text that describes what file to look for; they do not upload or link a file.
-- **BR-10:** Proposed maximum lengths are 4,000 characters for Action Description and Result, and 2,000 characters for Follow-up Note and Attachment Notes. Values are trimmed before validation. Empty descriptions/results and future Action Date/Time are rejected. These limits remain subject to student review.
+- **BR-08:** A Ticket may enter `RESOLVED` only when it has at least one Action Taken and every Action Taken with `followUpRequired = true` also has `followUpCompleted = true`. `CLOSED` requires a current `RESOLVED` state and the same gate. A required follow-up remains marked required after completion. Completing it changes the separate completion state, and the follow-up work itself is recorded as an Action Taken when it represents substantive work. The backend enforces this gate in the same transaction as the status transition.
+- **BR-09:** `followUpNote` is required and non-blank when `followUpRequired = true`. When false, the server stores it as null and `followUpCompleted` must be false. When true, `followUpCompleted` starts false and may be set true by an authorized Staff/Administrator on an active Ticket after the follow-up is complete. It cannot be set true on Action Taken creation. Marking a follow-up complete does not clear or rewrite `followUpRequired`. Attachment Notes are optional plain text that describes what file to look for; they do not upload or link a file.
+- **BR-10:** Maximum lengths are 4,000 characters for Action Description and Result, and 2,000 characters for Follow-up Note and Attachment Notes. Values are trimmed before validation. Empty descriptions/results and future Action Date/Time are rejected.
 - **BR-11:** A repeated Action Taken creation with the same actor-scoped `Idempotency-Key` and equivalent payload returns the existing record without creating a duplicate. Reusing that key with a different payload or Ticket returns `409 IDEMPOTENCY_KEY_REUSED`. Persist an immutable request fingerprint with the Action Taken so a later in-place edit cannot change the result of a retry check.
 
 ### Status history and concurrency
 
 - **BR-12:** Status history is append-only. It has no update/delete API, and the database rejects updates/deletes to history rows. History is ordered by `createdAt ASC, id ASC`.
 - **BR-13:** New Tickets receive an initial `NEW` event in the Ticket-creation transaction. Existing Tickets receive a `LEGACY_BASELINE` event with null actor, null prior status, current status as the observed status, and migration time. This records the state seen at migration, not an invented historical transition.
-- **BR-14:** Ticket workflow updates use an integer Ticket version. Action Taken updates use an integer Action Taken version. A stale expected version returns a 409 conflict with the current safe representation and does not overwrite newer data.
+- **BR-14:** `Ticket.version` starts at zero for new and migrated Tickets. It increments in the same transaction as formal status changes, Owner assignment, IT Priority changes, Requester resolution indications, and Action Taken create/edit, including follow-up completion. These writes invalidate a stale status form. Public Comments, Internal Notes, Attachments, and activity-timestamp maintenance do not increment this workflow version because they do not change the transition or resolution-gate inputs. Each Action Taken has its own independent version, starts at one on creation, and increments on edit. A stale expected version returns a 409 conflict with the current safe representation and does not overwrite newer data.
 - **BR-15:** Status and its history event commit in one database transaction. No event is written when validation, authorization, gate, or stale-version checks fail. Action Taken create/edit and status transitions that evaluate the resolution gate serialize on the parent Ticket within their transactions, so concurrent writes cannot pass the gate against an outdated Action Taken set.
 
 ### Dashboard calculations
@@ -118,7 +119,7 @@ The backend rejects all unlisted transitions. A Requester resolution indication 
 - **BR-17:** Active statuses are `NEW`, `OPEN`, `IN_PROGRESS`, `WAITING_FOR_REQUESTER`, and `REOPENED`. Terminal statuses are `RESOLVED`, `CLOSED`, and `CANCELLED`.
 - **BR-18:** Requester `openTickets` counts the authenticated Requester's Tickets in active statuses. `waitingForRequester` counts their Tickets in `WAITING_FOR_REQUESTER`. `recentlyUpdated` counts Tickets whose latest Requester-visible activity falls in the recent window. `recentlyResolved` counts Tickets currently `RESOLVED` or `CLOSED` whose latest real transition into `RESOLVED` falls in the window. `LEGACY_BASELINE` is not a resolution event.
 - **BR-19:** Staff `unassigned` counts active Tickets with no Owner. `ownedByMe` counts active Tickets whose Owner is the authenticated user. `actionsTakenByMe` counts all Actions Taken whose immutable `performedById` equals the authenticated user. `activeByStatus` counts active Tickets grouped by status. `activeByItPriority` counts active Tickets grouped by IT Priority, including `UNASSIGNED`. The recent action list returns the latest five of the current user's actions by Action Date/Time descending, then action ID descending.
-- **BR-20:** Staff recent activity includes Ticket changes, Actions Taken, Public Comments, Internal Notes, Attachments, and Requester resolution indications. Requester-visible recent activity includes Ticket creation, formal status changes, Requester-visible Ticket field changes, Public Comments, Attachments available to the Requester, Actions Taken, and Requester resolution indications. It excludes Internal Notes and staff-only Owner assignment. The Ticket stores separate staff and Requester-visible activity timestamps to keep metrics efficient without exposing internal activity.
+- **BR-20:** Staff recent activity includes Ticket changes, Actions Taken, Public Comments, Internal Notes, Attachments, and Requester resolution indications. Requester-visible recent activity includes Ticket creation, changes to Requester-visible Ticket fields (`ticketDate`, category, related system, summary, description, requested priority, IT Priority, and current status), Public Comments, Attachments available to the Requester, Actions Taken, and Requester resolution indications. It excludes Internal Notes and staff-only Owner assignment. The Ticket stores separate staff and Requester-visible activity timestamps to keep metrics efficient without exposing internal activity.
 - **BR-21:** Recent lists return at most five rows, sorted by activity/resolution timestamp descending and Ticket number descending. Every known status/priority key is returned with a numeric count, including zero.
 
 ### Migration, seeds, and recovery
@@ -127,6 +128,7 @@ The backend rejects all unlisted transitions. A Requester resolution indication 
 - **BR-23:** Before applying the migration to any non-disposable environment, take a database backup and record row counts/ownership for existing tables. If migration fails before new writes are accepted, restore that snapshot. After new Actions Taken/history writes are accepted, recover by forward-fix or a consistent snapshot restore, never by silently dropping new records.
 - **BR-24:** Seed operations use stable unique keys/upserts and can run repeatedly without duplicates or changing existing user passwords.
 - **BR-25:** Activity timestamps are updated in the same transaction as the event that caused them. Dashboard counts are database aggregates over indexed filters, not stored counters and not calculations over a full Ticket collection.
+- **BR-26:** Actions Taken may be created or edited only while the Ticket is in `NEW`, `OPEN`, `IN_PROGRESS`, `WAITING_FOR_REQUESTER`, or `REOPENED`. Requests on `RESOLVED`, `CLOSED`, or `CANCELLED` Tickets return `409 ACTION_TAKEN_LOCKED` without changing data. Reopen the Ticket before recording or correcting an action.
 
 ## 6. UI Specification Summary
 
@@ -138,7 +140,7 @@ The implementation must extend the existing PostgreSQL/Prisma models without rep
 
 ### Proposed models and fields
 
-- **`ActionTaken`:** `id`, `ticketId`, `actionAt`, `description`, `result`, `performedById`, `followUpRequired`, nullable `followUpNote`, nullable `attachmentNotes`, `idempotencyKey`, immutable `idempotencyPayloadHash`, `version`, `createdAt`, `updatedAt`, `updatedById`. `performedById` and `updatedById` reference User with Restrict deletion. On create, `updatedById` is the same authenticated user as `performedById`; later edits set it to the current editor. Ticket deletion is restricted while actions exist. Enforce uniqueness on `(performedById, idempotencyKey)`.
+- **`ActionTaken`:** `id`, `ticketId`, `actionAt`, `description`, `result`, `performedById`, `followUpRequired`, `followUpCompleted`, nullable `followUpNote`, nullable `attachmentNotes`, `idempotencyKey`, immutable `idempotencyPayloadHash`, `version`, `createdAt`, `updatedAt`, `updatedById`. `performedById` and `updatedById` reference User with Restrict deletion. On create, `updatedById` is the same authenticated user as `performedById`; later edits set it to the current editor. `followUpCompleted` is false by default and may be true only when `followUpRequired` is true. Ticket deletion is restricted while actions exist. Enforce uniqueness on `(performedById, idempotencyKey)`.
 - **`TicketStatusHistory`:** `id`, `ticketId`, nullable `fromStatus`, `toStatus`, nullable `actorId`, `eventKind` (`INITIAL`, `TRANSITION`, `LEGACY_BASELINE`), and `createdAt`. Ticket deletion is restricted. Actor is nullable only for a migration baseline.
 - **`Ticket`:** add `version`, `lastStaffActivityAt`, and `lastRequesterVisibleActivityAt`. Existing `updatedAt` retains its current row-update meaning.
 - **Enums:** use the existing `TicketStatus` and `UserRole` enums. Do not introduce a second status set.
@@ -153,7 +155,7 @@ The implementation must extend the existing PostgreSQL/Prisma models without rep
 ### Migration and backfill
 
 - Add the new tables/columns and indexes using a Prisma migration.
-- Initialize Ticket version to zero.
+- Initialize Ticket version to zero. Existing Tickets have no Actions Taken, so no follow-up completion values require backfill.
 - Backfill staff activity time from the maximum of Ticket `updatedAt`, Public Comment creation, Internal Note creation, Attachment upload/removal, and Requester resolution time.
 - Backfill Requester-visible activity time from the maximum of Ticket creation/update, Public Comment creation, Attachment upload/removal, and Requester resolution time. Exclude Internal Notes. Lab 3 has no field-level activity log, so legacy `updatedAt` is an approximate recency marker and may include staff-only Owner changes. Do not expose the private change itself. After migration, update the Requester-visible timestamp only for the events listed in BR-20.
 - Insert one `LEGACY_BASELINE` history event per existing Ticket at migration time. Do not invent an actor or earlier transition. A baseline is not a resolution event and does not qualify a legacy Ticket for the `recentlyResolved` metric.
@@ -170,14 +172,14 @@ The detailed request/response and authorization contract is in `api-spec.md`. It
 
 ## 9. Acceptance Criteria
 
-- **AC-01:** Given an authorized staff actor and valid Action Taken data, when it is created, then the row is saved under the correct Ticket with server-managed performer identity and all required fields.
+- **AC-01:** Given an authorized staff actor and valid Action Taken data on an active Ticket, when it is created, then the row is saved under the correct Ticket with server-managed performer identity, `followUpCompleted = false`, and all required fields.
 - **AC-02:** Given a Ticket Owner and a different action performer, when the action is created/edited, then the Owner remains unchanged and the performer reflects the authenticated creator.
 - **AC-03:** Given a Requester, IT Staff member, Administrator, unauthenticated user, or foreign Ticket id, when Action Taken APIs are called, then backend role and ownership rules are enforced with safe responses.
 - **AC-04:** Given invalid Action Date/Time, blank/oversized fields, or a missing required Follow-up Note, when an action is submitted, then validation fails without creating/updating a row.
 - **AC-05:** Given any current/next status pair, when the status API is called, then only the documented transition is accepted for an authorized IT Staff actor.
-- **AC-06:** Given a Ticket that fails the approved resolution gate, when staff requests Resolved or Closed, then the server rejects it and leaves status/history unchanged.
+- **AC-06:** Given a Ticket with no Actions Taken or any incomplete required follow-up, when staff requests Resolved or Closed, then the server rejects it and leaves status/history unchanged. Once there is at least one Action Taken and every required follow-up is complete, the gate passes without changing the original `followUpRequired` value.
 - **AC-07:** Given a successful Ticket transition, when status history is read, then the event is appended once, ordered deterministically, visible to permitted viewers, and not editable/deletable.
-- **AC-08:** Given a duplicate create retry or stale Action/Ticket version, when a write is retried, then no duplicate or overwrite occurs and the documented idempotent response or 409 conflict is returned.
+- **AC-08:** Given a duplicate create retry, identical stale Action Taken update retry, or stale Ticket version, when a write is retried, then no duplicate or overwrite occurs and the documented idempotent response or 409 conflict is returned.
 - **AC-09:** Given a Requester, when their dashboard is read, then metric counts and recent rows use only their own Tickets and the documented seven-day UTC window.
 - **AC-10:** Given IT Staff or permitted Administrator access, when the Staff dashboard is read, then backend counts correctly reflect unassigned, current-user-owned, current-user Actions Taken, status, priority, and staff-visible recent activity.
 - **AC-11:** Given dashboard metric cards or recent rows, when activated, then the user reaches a useful filtered Ticket list or the matching Ticket Detail without receiving another role's data.
@@ -188,13 +190,15 @@ The detailed request/response and authorization contract is in `api-spec.md`. It
 - **AC-16:** Given the documented dashboard performance-smoke fixture, when dashboard APIs run repeatedly, then indexed aggregate queries meet the proposed local smoke target without loading complete Ticket collections.
 - **AC-17:** Given the final app state, when evidence is captured, then genuine screenshots exist in all three required Lab 4 screenshot directories and demonstrate the required views and responsive states.
 - **AC-18:** Given a Staff member assigns a Ticket Owner, when the target is inactive or has an ineligible role, then the backend returns a safe conflict and leaves the existing Owner unchanged. An active eligible assignee can still be assigned.
+- **AC-19:** Given an Action Taken with `followUpRequired = true`, when its follow-up is completed, then staff can set `followUpCompleted = true` while the original required flag remains true, and the Ticket cannot resolve until all required follow-ups are complete.
+- **AC-20:** Given a Ticket in `RESOLVED`, `CLOSED`, or `CANCELLED`, when staff creates or edits an Action Taken, then the server returns `409 ACTION_TAKEN_LOCKED` and leaves the record unchanged. After the Ticket is reopened, authorized staff can create or edit Actions Taken.
 
 Every AC maps to planned tests in `tests.md`. Status remains Planned until a real run is performed.
 
 ## 10. Definition of Done
 
-- [ ] Student has reviewed and approved this specification plus `tests.md`, `ui-spec.md`, and `api-spec.md` before product implementation.
-- [ ] Every AC maps to at least one planned test and all required filenames match the Lab 4 sheet.
+- [x] Student has reviewed and approved this specification plus `tests.md`, `ui-spec.md`, and `api-spec.md` before product implementation.
+- [x] Every AC maps to at least one planned test and all required filenames match the Lab 4 sheet.
 - [ ] Backend authorization, Owner/performer separation, the transition matrix, resolution gate, and append-only status history match this contract.
 - [ ] Migration/backfill/recovery and repeatable seeds preserve all earlier data and meet the documented policy.
 - [ ] Requester and Staff dashboards are authoritative, privacy-safe, and have working drill-downs.
@@ -206,14 +210,15 @@ Every AC maps to planned tests in `tests.md`. Status remains Planned until a rea
 - [ ] Final test and evidence verification is performed from `main`.
 - [ ] Exactly one concise PDF with Answer Parts 1–9 is prepared outside Git. The Answer Sheet, PDF, and generation files are not committed.
 
-## 11. Assumptions and Decisions for Student Review
+## 11. Approved Contract Decisions
 
-1. **Append-only interpretation:** confirmed by the student. Ticket status history is append-only; Actions Taken are editable in place.
-2. **Resolution gate:** proposed as at least one Action Taken and no Action Taken requiring follow-up. Edits that would break the gate on a Resolved/Closed Ticket require reopening first. Student approval is still required before coding.
-3. **Administrator status access:** remains IT Staff only as in Lab 3. Administrators can use Actions Taken and Staff dashboards as the Lab 4 sheet permits.
-4. **Dashboard recent window:** rolling seven days in UTC, with zero counts returned explicitly and recent lists limited to five rows.
-5. **Action field limits and future dates:** proposed limits and validation appear in BR-07, BR-09, and BR-10 and require student review.
-6. **Legacy workflow history:** migration records a labeled current-state baseline at migration time because historical transitions/actors cannot be reconstructed.
-7. **Activity privacy:** Internal Notes affect Staff activity only; they do not change Requester-visible recent activity.
-8. **Review and release:** reviewer identity is not assumed. The student must confirm the Lab 4 reviewer before any review request. The reviewer must provide actual approval and perform the merge.
-9. **Submission boundary:** Answer Sheet, final PDF, and PDF-generation files remain outside Git; the three required screenshot directories are committed through reviewed PRs.
+1. **Append-only interpretation:** Ticket status history is append-only; Actions Taken are editable in place.
+2. **Resolution gate:** at least one Action Taken is required, and every Action Taken that requires follow-up must have its separate completion state set before resolution.
+3. **Action Taken status access:** create/edit is allowed on active statuses only. Resolved, Closed, and Cancelled Tickets must be reopened before Actions Taken changes.
+4. **Administrator status access:** remains IT Staff only as in Lab 3. Administrators can use Actions Taken and Staff dashboards as the Lab 4 sheet permits.
+5. **Dashboard recent window:** rolling seven days in UTC, with zero counts returned explicitly and recent lists limited to five rows.
+6. **Action validation:** the approved lengths and date/required-note validation are defined in BR-07, BR-09, and BR-10.
+7. **Legacy workflow history:** migration records a labeled current-state baseline at migration time because historical transitions/actors cannot be reconstructed.
+8. **Activity privacy:** Internal Notes affect Staff activity only; they do not change Requester-visible recent activity. Requester-visible fields are enumerated in BR-20.
+9. **Review and release:** Bank848 is the Lab 4 reviewer confirmed by the student. The reviewer must provide actual approval and perform the merge. Every comment receives a response and fixes remain on the same branch.
+10. **Submission boundary:** Answer Sheet, final PDF, and PDF-generation files remain outside Git; the three required screenshot directories are committed through reviewed PRs.

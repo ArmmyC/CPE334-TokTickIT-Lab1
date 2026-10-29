@@ -1,6 +1,6 @@
 # Lab 4 REST API Specification
 
-**Status:** Draft for student review. Implementation is blocked until the student approves this document with the other three contract files.
+**Status:** Approved by the student. Implementation may begin after PR #71 comments are resolved and the reviewer merges it to `lab4-staging`.
 **Base path:** `/api`
 **Compatibility:** Preserve all approved Lab 2–3 routes and behavior.
 
@@ -20,7 +20,7 @@
 | Requester dashboard | Own identity only | No | No |
 | Staff dashboard | No | Yes | Yes, shared Staff metrics |
 | Read Ticket Detail and Actions Taken | Owned Tickets only | Accessible Tickets | Permitted protected Ticket Detail |
-| Create/update Actions Taken | No | Accessible Tickets | Accessible Tickets, as Lab 4 Section 4.3 permits |
+| Create/update Actions Taken | No | Active accessible Tickets only | Active accessible Tickets only, as Lab 4 Section 4.3 permits |
 | Read Ticket status history | Owned Tickets only | Accessible Tickets | Permitted protected Ticket Detail |
 | Change formal Ticket status | No | Yes, matrix and gate enforced | No, preserve Lab 3 status authorization |
 | Read Internal Notes | No | Existing Staff access | Existing permitted read-only access |
@@ -40,6 +40,7 @@ All role checks run in backend middleware/handlers. Hiding UI controls is not au
   "result": "The workstation starts normally.",
   "performedBy": { "id": 6, "name": "Nok Staff", "role": "IT_STAFF" },
   "followUpRequired": false,
+  "followUpCompleted": false,
   "followUpNote": null,
   "attachmentNotes": "See the existing power test report in Attachments.",
   "version": 1,
@@ -49,7 +50,7 @@ All role checks run in backend middleware/handlers. Hiding UI controls is not au
 }
 ```
 
-`performedBy` is immutable after creation. `updatedBy` describes the last editor and appears only in Staff/Admin detail. Requester responses omit `updatedBy` and still include the performer required by the sheet. New records start at `version: 1`; `updatedBy` is the creating actor until another authorized user edits the record. No response returns the idempotency key or request fingerprint.
+`performedBy` is immutable after creation. `updatedBy` describes the last editor and appears only in Staff/Admin detail. Requester responses omit `updatedBy` and still include the performer required by the sheet. New records start at `version: 1`; `updatedBy` is the creating actor until another authorized user edits the record. `followUpCompleted` starts false and is false whenever `followUpRequired` is false. No response returns the idempotency key or request fingerprint.
 
 ### Ticket status-history response
 
@@ -117,14 +118,14 @@ Request body:
 }
 ```
 
-The body does not accept `ticketId`, `performedById`, `updatedById`, `ownerId`, `role`, or `version`. The server takes the actor from the session and, in a transaction serialized on the parent Ticket, validates the Ticket and checks the resolution gate when applicable. It stores a unique `(performedById, Idempotency-Key)` pair and an immutable fingerprint of the canonical request payload. A replay returns the existing row's current representation, even if it was edited after its original creation.
+The body does not accept `ticketId`, `performedById`, `updatedById`, `ownerId`, `role`, `version`, or `followUpCompleted`. The server takes the actor from the session, forces `followUpCompleted = false`, and in a transaction serialized on the parent Ticket requires an active status: `NEW`, `OPEN`, `IN_PROGRESS`, `WAITING_FOR_REQUESTER`, or `REOPENED`. It stores a unique `(performedById, Idempotency-Key)` pair and an immutable fingerprint of the canonical request payload. An exact replay returns the existing row's current representation without mutation, even if it was edited after creation or the Ticket has since become terminal. If simultaneous requests race on the unique key, the loser reloads the existing row and applies the same fingerprint comparison instead of surfacing a database error.
 
 - First successful submission returns `201 { "actionTaken": ActionTaken }`.
 - A replay with the same actor, key, Ticket, and equivalent payload returns `200 { "actionTaken": ActionTaken, "replayed": true }` without another row.
 - Reusing the key with a different Ticket or normalized payload returns `409 IDEMPOTENCY_KEY_REUSED`. A missing or malformed UUID key returns `400 VALIDATION_FAILED`.
 - Invalid values return `400 VALIDATION_FAILED` with field errors.
 - Missing/foreign Ticket returns `404 TICKET_NOT_FOUND`.
-- On a Resolved or Closed Ticket, a create that would leave any Action Taken requiring follow-up returns `409 RESOLUTION_GATE_BLOCKED` without creating a row. The transaction shares the parent-Ticket serialization rule with status changes.
+- A new Action Taken on `RESOLVED`, `CLOSED`, or `CANCELLED` returns `409 ACTION_TAKEN_LOCKED` without creating a row. Reopen the Ticket before recording work.
 - Missing session returns `401 AUTHENTICATION_REQUIRED`; forbidden role/CSRF returns `403`.
 
 ### `PATCH /api/staff/tickets/:ticketId/actions/:actionId`
@@ -140,12 +141,15 @@ Request body:
   "description": "Replaced the damaged power adapter.",
   "result": "The workstation starts normally.",
   "followUpRequired": true,
+  "followUpCompleted": true,
   "followUpNote": "Check battery health next week.",
   "attachmentNotes": null
 }
 ```
 
-The server updates the current Action Taken row in place, increments its version, sets `updatedAt`/`updatedBy`, and preserves `performedBy` and the original idempotency fingerprint. In a transaction serialized on the parent Ticket, edits to a Resolved or Closed Ticket must leave the full Action Taken set satisfying the gate. Otherwise return `409 RESOLUTION_GATE_BLOCKED` without changing the row, and staff must reopen the Ticket before saving a follow-up-required action. It never creates an edit revision. If the supplied version is stale, return `409 ACTION_TAKEN_VERSION_CONFLICT` with the current safe Action Taken response. Other validation, ownership, gate, session, role, and CSRF failures follow the POST behavior.
+The server updates the current Action Taken row in place and preserves `performedBy` and the original idempotency fingerprint. When `followUpRequired` is true, `followUpCompleted` may be set true only after the work is complete; the required flag and note remain intact. When `followUpRequired` is false, the note is null and completion is false. A successful changed edit increments the Action Taken version and parent `Ticket.version`, and sets `updatedAt`/`updatedBy`. A no-op retry whose normalized mutable fields already equal the stored row returns `200 { "actionTaken": ActionTaken, "replayed": true }` without changing either version or editor metadata, including when its `expectedVersion` is stale or the Ticket has since become terminal. This state comparison is performed before stale-version and terminal-lock checks.
+
+Other edits require an active Ticket. A changed edit on `RESOLVED`, `CLOSED`, or `CANCELLED` returns `409 ACTION_TAKEN_LOCKED` and leaves the row unchanged; staff must reopen the Ticket before editing. On an active Ticket, a stale version whose requested state differs from the current row returns `409 ACTION_TAKEN_VERSION_CONFLICT` with the current safe Action Taken representation. A valid changed edit uses the expected current Action Taken version. It never creates an edit revision. Other validation, ownership, session, role, and CSRF failures follow the POST behavior.
 
 There is no Action Taken delete endpoint.
 
@@ -163,7 +167,9 @@ Allowed role: `IT_STAFF` only. Requires CSRF. Request:
 }
 ```
 
-The server reads current status from the database and never trusts a client-supplied current status. It validates `nextStatus` against the Lab 3 transition matrix plus the approved resolution gate. `confirmed: true` is required for `RESOLVED`, `CLOSED`, and `CANCELLED`. The gate check and status write serialize with Action Taken create/edit on the same parent Ticket. Success atomically updates Ticket status/version and inserts exactly one immutable status-history event. Return `200` with the Staff Ticket Detail shape.
+The server reads current status from the database and never trusts a client-supplied current status. It validates `nextStatus` against the Lab 3 transition matrix plus the approved resolution gate. `confirmed: true` is required for `RESOLVED`, `CLOSED`, and `CANCELLED`. The resolution gate requires at least one Action Taken and requires `followUpCompleted = true` for every Action Taken where `followUpRequired = true`. The gate check and status write serialize with Action Taken create/edit on the same parent Ticket. Success atomically updates Ticket status/version and inserts exactly one immutable status-history event. Return `200` with the Staff Ticket Detail shape.
+
+New and migrated Tickets start at `version: 0`. `Ticket.version` increments in the same transaction as a formal status transition, Owner assignment, IT Priority change, Requester resolution indication change, or Action Taken create/edit. Public Comments, Internal Notes, Attachments, and activity-timestamp maintenance do not increment it. A stale status form therefore conflicts after any write that changes an Owner, IT Priority, Requester resolution indication, status, or Action Taken. Successful action changes return the current Action Taken representation; the client reloads Ticket Detail to obtain the new Ticket version and resolution-gate state.
 
 - Unlisted transition: `409 STATUS_TRANSITION_CONFLICT`, including current status and permitted next statuses.
 - Failed resolution gate: `409 RESOLUTION_GATE_BLOCKED`, with safe conditions that must be met.
@@ -216,6 +222,7 @@ Definitions:
 - `recentlyUpdated`: owned Tickets whose Requester-visible activity is within the window.
 - `recentlyResolved`: owned Tickets currently `RESOLVED` or `CLOSED` whose latest `TRANSITION` event into `RESOLVED` is within the window. A later `REOPENED` or `CANCELLED` state excludes the Ticket. A `LEGACY_BASELINE` is never treated as a resolution event.
 - Recent arrays contain at most five rows, sorted by their event/activity timestamp descending, then Ticket number descending. A metric with no matches returns zero and an empty array.
+- Requester dashboard rows expose only approved Requester-visible fields: Ticket number, Summary, current status, IT Priority, and Requester-visible activity or resolution time. They never include Owner, Internal Notes, or staff-only activity timestamps.
 
 ### `GET /api/staff/dashboard`
 
@@ -303,6 +310,7 @@ Dashboard links use the existing detailed Ticket lists, extended by the followin
 | 409 | `RESOLUTION_GATE_BLOCKED` | Resolution prerequisites are unmet |
 | 409 | `TICKET_VERSION_CONFLICT`, `ACTION_TAKEN_VERSION_CONFLICT` | Stale version |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | Key replayed with a different payload/Ticket |
+| 409 | `ACTION_TAKEN_LOCKED` | A changed Action Taken write targets a Resolved, Closed, or Cancelled Ticket |
 | 500 | `INTERNAL_ERROR` | Safe generic operation failure |
 
 ## 10. Existing API Regression
