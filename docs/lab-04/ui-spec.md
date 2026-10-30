@@ -1,6 +1,6 @@
 # Lab 4 UI Specification
 
-**Status:** Approved by the student. Implement the contract through the approved Issue sequence and reviewed PRs to `lab4-staging`.
+**Status:** Approved by the student on 2026-10-30, including the Administrator read-only Staff Queue drill-down clarification. Implement through the approved Issue sequence and reviewed PRs to `lab4-staging`.
 **Visual baseline:** Reuse the Lab 2–3 Zen Green system and shared AuthenticatedShell.
 
 ## 1. Design Tokens and Shared Rules
@@ -28,8 +28,9 @@
 | --- | --- | --- | --- |
 | Requester Dashboard | `/requester/dashboard` | Requester | Shows metrics and recent information for the authenticated Requester's Tickets only |
 | IT Staff Dashboard | `/staff/dashboard` | IT Staff, Administrator | Shows approved Staff metrics, recent activity, and links to Ticket Queue/Detail |
+| Staff Ticket Queue | `/staff/tickets` | IT Staff, Administrator | IT Staff retain existing queue behavior; Administrators may read/filter the queue for dashboard drill-downs, with no queue mutation controls |
 | Requester Ticket Detail | Existing `/tickets/:ticketId` | Owner Requester | Shows read-only Actions Taken and permitted status history for an owned Ticket |
-| Staff Ticket Detail | Existing `/staff/tickets/:ticketId` | IT Staff, Administrator | Shows Actions Taken create/edit controls for permitted roles and status controls only for IT Staff |
+| Staff/Admin Ticket Detail | IT Staff: existing `/staff/tickets/:ticketId`; Administrator: existing `/admin/tickets/:ticketId` | IT Staff, Administrator | Shows Actions Taken create/edit controls for permitted roles and status controls only for IT Staff |
 
 The authenticated navigation includes Dashboard for the active role. Direct route entry follows the same role and ownership guards as the navigation. Hiding a control never replaces backend authorization. Administrator status mutation remains unavailable under the Lab 3 permission contract.
 
@@ -51,11 +52,11 @@ Do not display Owner-only activity, Internal Note content, or any other Requeste
 
 1. Page title and an as-of timestamp rendered in the viewer's local timezone.
 2. Metric cards for **Unassigned Active Tickets**, **Active Tickets Owned by Me**, **Actions Taken by Me**, and **Recently Updated Tickets**.
-3. A compact count-by-status section for active statuses and count-by-IT-Priority section, including Unassigned priority. Every configured value appears even when the count is zero.
+3. A compact count-by-status section for active statuses and count-by-IT-Priority section, including Unassigned priority. Every configured value appears even when the count is zero. Every count links to the Staff Queue filtered to that status, or to that priority within active Tickets. Zero counts remain links so users can inspect the matching empty result.
 4. Recent activity list, up to five rows, showing Ticket number, Summary, Requester, Owner, status, IT Priority, last activity timestamp, and activity type when available.
 5. Recent Actions Taken list, up to five rows, showing the current user's action date/time, Ticket, Result, and follow-up flag.
-6. Metric cards link to the Staff Queue with the matching server-side filter. Recent Ticket and Action rows open Staff Ticket Detail.
-7. Administrator may use this shared dashboard, as the Lab 4 sheet permits, but does not receive formal status controls.
+6. Metric cards link to the Staff Queue with the matching server-side filter. Status counts link with `status=<status>`; priority counts link with `statusGroup=ACTIVE&itPriority=<priority>`. Recent Ticket and Action rows open Ticket Detail. IT Staff links use `/staff/tickets/:ticketId`; Administrator links use `/admin/tickets/:ticketId`.
+7. Administrator may use this shared dashboard and read/filter the Staff Queue for drill-downs. Queue access is read-only. It does not grant Ticket Owner assignment, formal status changes, Public Comment creation, or Internal Note creation. Actions Taken create/edit controls remain governed by the approved Lab 4 role rules.
 
 The dashboard does not offer custom reports, exports, or additional analytics. The server response supplies all counts and recent rows.
 
@@ -143,6 +144,8 @@ Use the existing CSS breakpoints: tablet navigation/layout at 991px and mobile r
 - [ ] Follow-Up Required and Follow-Up Completed have separate visible labels so completion never looks like the original requirement was removed.
 - [ ] Record the manual audit date, tested role and viewport, and any findings in the Lab 4 Issue or PR evidence. This checklist is not an automated test result.
 
+Issue #68 browser checkpoint, 2026-10-31: the Requester and IT Staff dashboard flows were exercised at desktop 1440×900, tablet 834×1112, and mobile 390×844. Direct navigation focuses the page heading. Keyboard Tab reaches metric cards in document order, and Staff status counts are keyboard-reachable with a visible gold focus outline; Enter opens their filtered views. Staff status and priority counts, including zero values, open their matching filtered Staff Queue views. These checks are automated in `e2e/lab-04/dashboards.spec.ts`; they do not complete the manual checklist above. A full manual accessibility audit remains open for final hardening.
+
 ## 10. Screenshot Evidence and Visual Checklist
 
 Capture genuine application screens only after implementation. Store them at these exact paths:
@@ -155,8 +158,8 @@ Evidence status, with each image tied to a role, viewport, and observable state:
 
 | Directory | Status | Required or captured views |
 | --- | --- | --- |
-| `staff-dashboard/` | Planned | Desktop, tablet, and mobile, including current-user Actions Taken, non-zero and zero counts, recent/urgent Ticket drill-down, and safe loading/failure behavior |
-| `requester-dashboard/` | Planned | Desktop, tablet, and mobile, including owned-only metrics, recent/resolved items, empty state, and drill-down |
+| `staff-dashboard/` | Captured for Issue #68, 3 genuine images | `desktop-summary.png`, `tablet-summary.png`, and `mobile-summary.png` show Staff identity, current-user Actions Taken, recent Tickets, active status and priority counts with actionable zero-valued rows, and responsive card layout. API/component/E2E tests verify query agreement, safe loading/failure, and filtered drill-down behavior. |
+| `requester-dashboard/` | Captured for Issue #68, 3 genuine images | `desktop-summary.png`, `tablet-summary.png`, and `mobile-summary.png` show Requester identity, owned Ticket metrics, recent Tickets, and the empty recently resolved state. API/component/E2E tests verify ownership isolation and filtered drill-down behavior. |
 | `actions-taken/` | Captured for Issue #67, 12 genuine images | Four states at desktop, tablet, and mobile: Staff follow-up validation, Staff create/edit with multiple actions, Staff safe forbidden response, and Requester read-only view |
 
 The Actions Taken images use these viewport sizes: desktop 1440×900, tablet 834×1112, and mobile 390×844. Each filename begins with its viewport (`desktop-`, `tablet-`, or `mobile-`) and ends with the state below:

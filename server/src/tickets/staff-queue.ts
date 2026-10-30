@@ -10,6 +10,8 @@ export type StaffTicketStatus =
   | 'REOPENED'
   | 'CANCELLED';
 
+type StaffTicketStatusGroup = 'ACTIVE';
+
 export type StaffTicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type StaffQueueSortBy =
   | 'ticketDate'
@@ -25,9 +27,13 @@ export type StaffQueueQuery = {
   pageSize: 10 | 20 | 50;
   search?: string;
   status?: StaffTicketStatus;
+  statusGroup?: StaffTicketStatusGroup;
   requestedPriority?: StaffTicketPriority;
   itPriority?: StaffTicketPriority | 'UNASSIGNED';
-  ownerId?: number | 'UNASSIGNED';
+  ownerId?: number | 'UNASSIGNED' | 'ME';
+  activitySince?: Date;
+  activityUntil?: Date;
+  actionPerformedBy?: 'ME';
   categoryId?: number;
   relatedSystemId?: number;
   sortBy: StaffQueueSortBy;
@@ -47,10 +53,12 @@ export type StaffQueueWhere = {
     | { requester: { name: TextSearch } }
     | { requester: { email: TextSearch } }
   >;
-  currentStatus?: StaffTicketStatus;
+  currentStatus?: StaffTicketStatus | { in: StaffTicketStatus[] };
   requestedPriority?: StaffTicketPriority;
   itPriority?: StaffTicketPriority | null;
   ownerId?: number | null;
+  lastStaffActivityAt?: { gte?: Date; lte?: Date };
+  actionsTaken?: { some: { performedById: number } };
   categoryId?: number;
   relatedSystemId?: number;
 };
@@ -188,6 +196,42 @@ function parseQueryString(value: unknown): string | null | undefined {
   return typeof value === 'string' ? value : null;
 }
 
+function parseQueryDate(value: unknown, field: string, fieldErrors: Record<string, string>): Date | undefined {
+  const source = parseQueryString(value);
+  if (source === undefined) return undefined;
+  const match = typeof source === 'string'
+    ? /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/.exec(source)
+    : null;
+  if (!match) {
+    fieldErrors[field] = 'Time filter must be an offset-aware ISO 8601 timestamp.';
+    return undefined;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[8] === undefined ? 0 : Number(match[8]);
+  const offsetMinute = match[9] === undefined ? 0 : Number(match[9]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12
+      || day < 1 || day > daysInMonth[month - 1]!
+      || hour > 23 || minute > 59 || second > 59
+      || offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) {
+    fieldErrors[field] = 'Time filter must be a valid timestamp.';
+    return undefined;
+  }
+  const parsed = new Date(source as string);
+  if (!Number.isFinite(parsed.getTime())) {
+    fieldErrors[field] = 'Time filter must be a valid timestamp.';
+    return undefined;
+  }
+  return parsed;
+}
+
 export function parseStaffQueueQuery(query: unknown): StaffQueueQuery {
   const source = isRecord(query) ? query : {};
   const fieldErrors: Record<string, string> = {};
@@ -221,6 +265,14 @@ export function parseStaffQueueQuery(query: unknown): StaffQueueQuery {
     fieldErrors.status = 'Status is not a valid Ticket Status.';
   }
 
+  const statusGroupValue = parseQueryString(source.statusGroup);
+  if (statusGroupValue !== undefined && statusGroupValue !== 'ACTIVE') {
+    fieldErrors.statusGroup = 'Status Group must be ACTIVE.';
+  }
+  if (statusGroupValue !== undefined && statusValue !== undefined) {
+    fieldErrors.statusGroup = 'Status Group cannot be combined with Status.';
+  }
+
   const requestedPriorityValue = parseQueryString(source.requestedPriority);
   if (
     requestedPriorityValue !== undefined
@@ -245,11 +297,22 @@ export function parseStaffQueueQuery(query: unknown): StaffQueueQuery {
   }
 
   const ownerValue = parseQueryString(source.ownerId);
-  const ownerId = ownerValue === undefined || ownerValue === 'UNASSIGNED'
+  const ownerId = ownerValue === undefined || ownerValue === 'UNASSIGNED' || ownerValue === 'ME'
     ? ownerValue
     : parsePositiveInteger(ownerValue);
   if (ownerValue !== undefined && ownerId === null) {
-    fieldErrors.ownerId = 'Owner id must be a positive integer or UNASSIGNED.';
+    fieldErrors.ownerId = 'Owner id must be a positive integer, ME, or UNASSIGNED.';
+  }
+
+  const activitySince = parseQueryDate(source.activitySince, 'activitySince', fieldErrors);
+  const activityUntil = parseQueryDate(source.activityUntil, 'activityUntil', fieldErrors);
+  if (activitySince && activityUntil && activitySince > activityUntil) {
+    fieldErrors.activitySince = 'Activity start must be on or before activity end.';
+  }
+
+  const actionPerformedByValue = parseQueryString(source.actionPerformedBy);
+  if (actionPerformedByValue !== undefined && actionPerformedByValue !== 'ME') {
+    fieldErrors.actionPerformedBy = 'Action Performed By must be ME.';
   }
 
   const categoryValue = parseQueryString(source.categoryId);
@@ -287,13 +350,17 @@ export function parseStaffQueueQuery(query: unknown): StaffQueueQuery {
     pageSize: pageSize as 10 | 20 | 50,
     ...(search ? { search } : {}),
     ...(statusValue === undefined ? {} : { status: statusValue as StaffTicketStatus }),
+    ...(statusGroupValue === undefined ? {} : { statusGroup: statusGroupValue as StaffTicketStatusGroup }),
     ...(requestedPriorityValue === undefined
       ? {}
       : { requestedPriority: requestedPriorityValue as StaffTicketPriority }),
     ...(itPriorityValue === undefined
       ? {}
       : { itPriority: itPriorityValue as StaffTicketPriority | 'UNASSIGNED' }),
-    ...(ownerValue === undefined ? {} : { ownerId: ownerId as number | 'UNASSIGNED' }),
+    ...(ownerValue === undefined ? {} : { ownerId: ownerId as number | 'UNASSIGNED' | 'ME' }),
+    ...(activitySince === undefined ? {} : { activitySince }),
+    ...(activityUntil === undefined ? {} : { activityUntil }),
+    ...(actionPerformedByValue === undefined ? {} : { actionPerformedBy: 'ME' }),
     ...(categoryId === undefined ? {} : { categoryId: categoryId as number }),
     ...(relatedSystemId === undefined ? {} : { relatedSystemId: relatedSystemId as number }),
     sortBy: sortBy as StaffQueueSortBy,
@@ -301,7 +368,13 @@ export function parseStaffQueueQuery(query: unknown): StaffQueueQuery {
   };
 }
 
-export function buildStaffQueueWhere(query: StaffQueueQuery): StaffQueueWhere {
+export function buildStaffQueueWhere(query: StaffQueueQuery, authenticatedUserId?: number): StaffQueueWhere {
+  const currentUserId = () => {
+    if (!Number.isSafeInteger(authenticatedUserId) || (authenticatedUserId ?? 0) <= 0) {
+      throw new Error('The authenticated user is required for a ME Staff Queue filter.');
+    }
+    return authenticatedUserId as number;
+  };
   return {
     ...(query.search
       ? {
@@ -314,14 +387,25 @@ export function buildStaffQueueWhere(query: StaffQueueQuery): StaffQueueWhere {
           ],
         }
       : {}),
-    ...(query.status === undefined ? {} : { currentStatus: query.status }),
+    ...(query.statusGroup === 'ACTIVE'
+      ? { currentStatus: { in: ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'REOPENED'] as StaffTicketStatus[] } }
+      : query.status === undefined ? {} : { currentStatus: query.status }),
     ...(query.requestedPriority === undefined ? {} : { requestedPriority: query.requestedPriority }),
     ...(query.itPriority === undefined
       ? {}
       : { itPriority: query.itPriority === 'UNASSIGNED' ? null : query.itPriority }),
     ...(query.ownerId === undefined
       ? {}
-      : { ownerId: query.ownerId === 'UNASSIGNED' ? null : query.ownerId }),
+      : { ownerId: query.ownerId === 'UNASSIGNED' ? null : query.ownerId === 'ME' ? currentUserId() : query.ownerId }),
+    ...((query.activitySince !== undefined || query.activityUntil !== undefined)
+      ? {
+          lastStaffActivityAt: {
+            ...(query.activitySince === undefined ? {} : { gte: query.activitySince }),
+            ...(query.activityUntil === undefined ? {} : { lte: query.activityUntil }),
+          },
+        }
+      : {}),
+    ...(query.actionPerformedBy === 'ME' ? { actionsTaken: { some: { performedById: currentUserId() } } } : {}),
     ...(query.categoryId === undefined ? {} : { categoryId: query.categoryId }),
     ...(query.relatedSystemId === undefined ? {} : { relatedSystemId: query.relatedSystemId }),
   };
