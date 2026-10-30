@@ -34,6 +34,8 @@ const detailResponse = {
     requestedPriority: 'HIGH',
     itPriority: 'HIGH',
     currentStatus: 'IN_PROGRESS',
+    version: 4,
+    statusHistory: [],
     owner: { id: 3, name: 'Somsak Staff', email: 'somsak@example.test', role: 'IT_STAFF' },
     attachments: [{
       id: 7,
@@ -173,7 +175,7 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
     expect(screen.getByRole('spinbutton', { name: 'Owner User ID' })).toHaveValue(3);
     expect(screen.getByRole('button', { name: 'Claim Ticket' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'IT Priority' })).toHaveValue('HIGH');
-    expect(screen.getByRole('combobox', { name: 'Current Status' })).toHaveValue('IN_PROGRESS');
+    expect(screen.getByRole('combobox', { name: 'Next Status' })).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Update Status' })).toBeInTheDocument();
     expect(screen.getByText('evidence.pdf')).toBeInTheDocument();
     expect(screen.getByText('The issue still occurs after restarting.')).toBeInTheDocument();
@@ -200,7 +202,7 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
       && String(init.body).includes('"itPriority":"URGENT"')
     ))).toBe(true));
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Current Status' }), { target: { value: 'RESOLVED' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Next Status' }), { target: { value: 'RESOLVED' } });
     fireEvent.click(screen.getByRole('button', { name: 'Update Status' }));
     expect(screen.getByRole('button', { name: 'Confirm status change' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm status change' }));
@@ -258,7 +260,7 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
     await renderStaffDetail();
 
     const statusTrigger = screen.getByRole('button', { name: 'Update Status' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Current Status' }), { target: { value: 'RESOLVED' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Next Status' }), { target: { value: 'RESOLVED' } });
     fireEvent.click(statusTrigger);
 
     const cancelButton = await screen.findByRole('button', { name: 'Cancel status change' });
@@ -275,6 +277,7 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
     });
     await renderStaffDetail({ ownerUpdateResponse });
 
+    fireEvent.change(screen.getByRole('combobox', { name: 'Next Status' }), { target: { value: 'WAITING_FOR_REQUESTER' } });
     fireEvent.click(screen.getByRole('button', { name: 'Claim Ticket' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Saving Owner...' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Save IT Priority' })).not.toBeDisabled();

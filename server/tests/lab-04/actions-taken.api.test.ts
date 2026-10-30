@@ -56,6 +56,7 @@ async function createActionHarness() {
     relatedSystem: { id: 5, name: 'Campus Wi-Fi' },
   };
   const actions = new Map<number, Record<string, any>>();
+  const statusHistory: Record<string, any>[] = [];
   let nextActionId = 101;
   const userById = (id: number) => id === admin.id
     ? { id: admin.id, name: admin.name, role: admin.role }
@@ -138,7 +139,16 @@ async function createActionHarness() {
       findMany: vi.fn().mockResolvedValue([]),
     },
     ticketStatusHistory: {
-      findMany: vi.fn().mockResolvedValue([]),
+      findMany: vi.fn(async () => [...statusHistory]),
+      create: vi.fn(async ({ data }: { data: Record<string, any> }) => {
+        const record = {
+          id: statusHistory.length + 1,
+          ...data,
+          actor: userById(data.actorId),
+        };
+        statusHistory.push(record);
+        return record;
+      }),
     },
   }, auth.database);
   const app = createApp(database as never);
@@ -149,6 +159,7 @@ async function createActionHarness() {
     admin,
     ticket,
     actions,
+    statusHistory,
     actionTaken,
     ticketFindUnique,
     ticketUpdate,
@@ -156,6 +167,32 @@ async function createActionHarness() {
 }
 
 describe('Lab 4 Actions Taken API', () => {
+  it('invalidates a stale Ticket status form after an Action Taken write', async () => {
+    const harness = await createActionHarness();
+    const staff = await harness.login(harness.app, 'somsak@example.test');
+    const created = await staff.agent
+      .post('/api/staff/tickets/12/actions')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .set('Idempotency-Key', actionKey)
+      .send(actionPayload());
+    expect(created.status).toBe(201);
+    expect(harness.ticket.version).toBe(1);
+
+    const staleStatus = await staff.agent
+      .patch('/api/staff/tickets/12/status')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ expectedVersion: 0, nextStatus: 'WAITING_FOR_REQUESTER' });
+
+    expect(staleStatus.status).toBe(409);
+    expect(staleStatus.body).toMatchObject({
+      code: 'TICKET_VERSION_CONFLICT',
+      currentStatus: 'IN_PROGRESS',
+      currentVersion: 1,
+    });
+    expect(harness.ticket.currentStatus).toBe('IN_PROGRESS');
+    expect(harness.statusHistory).toHaveLength(0);
+  });
+
   it('uses the authenticated performer independently of the Ticket Owner and exposes requester-safe reads', async () => {
     const harness = await createActionHarness();
     const staff = await harness.login(harness.app, 'somsak@example.test');

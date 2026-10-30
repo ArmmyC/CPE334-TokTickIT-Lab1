@@ -120,9 +120,17 @@ async function createOperationalHarness({ staffRole = 'IT_STAFF' }: { staffRole?
     owner: typeof detailTicket.owner | null;
   };
   const ticket = structuredClone(detailTicket) as MutableDetailTicket;
+  ticket.owner = null;
   const ticketFindUnique = vi.fn().mockResolvedValue(ticket);
   const ticketUpdate = vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
-    Object.assign(ticket, data, { updatedAt: new Date('2026-09-08T11:30:00.000Z') });
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'object' && value !== null && 'increment' in value) {
+        (ticket as unknown as Record<string, any>)[key] += (value as { increment: number }).increment;
+      } else {
+        Object.assign(ticket, { [key]: value });
+      }
+    }
+    ticket.updatedAt = new Date('2026-09-08T11:30:00.000Z');
     if ('ownerId' in data) {
       ticket.owner = data.ownerId === null
         ? null
@@ -137,10 +145,34 @@ async function createOperationalHarness({ staffRole = 'IT_STAFF' }: { staffRole?
     }
     return Promise.resolve(ticket);
   });
+  const history: Array<Record<string, any>> = [];
+  const ticketStatusHistory = {
+    findMany: vi.fn(async () => [...history]),
+    create: vi.fn(async ({ data }: { data: Record<string, any> }) => {
+      const event = {
+        id: history.length + 1,
+        ...data,
+        actor: { id: data.actorId, name: 'Somsak Staff', role: 'IT_STAFF' },
+      };
+      history.push(event);
+      return event;
+    }),
+  };
+  const actionTaken = { findMany: vi.fn().mockResolvedValue([]) };
+  const transaction = {
+    $queryRaw: vi.fn(async () => [{ id: ticket.id }]),
+    ticket: { findUnique: ticketFindUnique, update: ticketUpdate },
+    actionTaken,
+    ticketStatusHistory,
+  };
   const database = withAuthDatabase({
+    $transaction: vi.fn(async (callback: (database: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    $queryRaw: transaction.$queryRaw,
     category: { findMany: vi.fn() },
     relatedSystem: { findMany: vi.fn() },
     ticket: { findUnique: ticketFindUnique, update: ticketUpdate },
+    actionTaken,
+    ticketStatusHistory,
     attachment: { findMany: vi.fn().mockResolvedValue(attachments) },
     publicComment: { findMany: vi.fn().mockResolvedValue(publicComments) },
     internalNote: { findMany: vi.fn().mockResolvedValue(internalNotes) },
@@ -152,6 +184,7 @@ async function createOperationalHarness({ staffRole = 'IT_STAFF' }: { staffRole?
     ticket,
     ticketFindUnique,
     ticketUpdate,
+    ticketStatusHistory,
   };
 }
 
@@ -177,6 +210,7 @@ describe('Lab 3 Staff Ticket Detail API', () => {
         itPriority: 'URGENT',
         currentStatus: 'IN_PROGRESS',
         actionsTaken: [],
+        statusHistory: [],
         owner: { id: 3, name: 'Somsak Staff', email: 'somsak@example.test', role: 'IT_STAFF' },
         attachments: [{
           id: 7,
@@ -254,27 +288,39 @@ describe('Lab 3 Staff Ticket Detail API', () => {
     expect(ownerResponse.status).toBe(200);
     expect(harness.ticketUpdate).toHaveBeenCalledWith({
       where: { id: 12 },
-      data: { ownerId: 3 },
+      data: expect.objectContaining({
+        ownerId: 3,
+        version: { increment: 1 },
+        lastStaffActivityAt: expect.any(Date),
+      }),
     });
 
     const priorityResponse = await staff.agent
       .patch('/api/staff/tickets/12/priority')
       .set('X-CSRF-Token', staff.csrfToken)
-      .send({ itPriority: 'URGENT' });
+      .send({ itPriority: 'LOW' });
     expect(priorityResponse.status).toBe(200);
     expect(harness.ticketUpdate).toHaveBeenCalledWith({
       where: { id: 12 },
-      data: { itPriority: 'URGENT' },
+      data: expect.objectContaining({
+        itPriority: 'LOW',
+        version: { increment: 1 },
+        lastStaffActivityAt: expect.any(Date),
+        lastRequesterVisibleActivityAt: expect.any(Date),
+      }),
     });
 
     const statusResponse = await staff.agent
       .patch('/api/staff/tickets/12/status')
       .set('X-CSRF-Token', staff.csrfToken)
-      .send({ currentStatus: 'RESOLVED', confirmed: true });
+      .send({ expectedVersion: 2, nextStatus: 'WAITING_FOR_REQUESTER' });
     expect(statusResponse.status).toBe(200);
     expect(harness.ticketUpdate).toHaveBeenCalledWith({
       where: { id: 12 },
-      data: { currentStatus: 'RESOLVED' },
+      data: expect.objectContaining({
+        currentStatus: 'WAITING_FOR_REQUESTER',
+        version: { increment: 1 },
+      }),
     });
   });
 
@@ -297,7 +343,7 @@ describe('Lab 3 Staff Ticket Detail API', () => {
     const statusResponse = await admin.agent
       .patch('/api/staff/tickets/12/status')
       .set('X-CSRF-Token', admin.csrfToken)
-      .send({ currentStatus: 'RESOLVED', confirmed: true });
+      .send({ expectedVersion: 0, nextStatus: 'WAITING_FOR_REQUESTER' });
     expect(statusResponse.status).toBe(403);
   });
 
@@ -328,7 +374,7 @@ describe('Lab 3 Staff Ticket Detail API', () => {
     const missingConfirmation = await staff.agent
       .patch('/api/staff/tickets/12/status')
       .set('X-CSRF-Token', staff.csrfToken)
-      .send({ currentStatus: 'RESOLVED', confirmed: false });
+      .send({ expectedVersion: 0, nextStatus: 'RESOLVED', confirmed: false });
     expect(missingConfirmation.status).toBe(400);
     expect(missingConfirmation.body).toMatchObject({
       code: 'VALIDATION_FAILED',
@@ -345,7 +391,7 @@ describe('Lab 3 Staff Ticket Detail API', () => {
     const response = await staff.agent
       .patch('/api/staff/tickets/12/status')
       .set('X-CSRF-Token', staff.csrfToken)
-      .send({ currentStatus: 'CLOSED', confirmed: true });
+      .send({ expectedVersion: 0, nextStatus: 'CLOSED', confirmed: true });
 
     expect(response.status).toBe(409);
     expect(response.body).toEqual({

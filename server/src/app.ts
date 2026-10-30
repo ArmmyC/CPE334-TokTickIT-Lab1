@@ -51,18 +51,23 @@ import {
   STAFF_TICKET_ATTACHMENT_SELECT,
   STAFF_TICKET_COMMUNICATION_SELECT,
   STAFF_TICKET_DETAIL_SELECT,
-  STAFF_TICKET_STATUS_TRANSITIONS,
+  STAFF_TICKET_STATUS_HISTORY_SELECT,
+  serializeTicketStatusHistoryEvent,
   parseStaffCommunicationPayload,
   parseStaffOwnerPayload,
   parseStaffPriorityPayload,
   parseStaffStatusPayload,
   StaffTicketOwnerConflictError,
+  StaffTicketResolutionGateConflictError,
   StaffTicketResolutionConflictError,
   StaffTicketTransitionConflictError,
+  StaffTicketVersionConflictError,
   StaffTicketValidationError,
   type StaffTicketDetailRecord,
   type StaffTicketDetailDatabase,
+  type TicketStatusHistoryRecord,
 } from './tickets/staff-detail.js';
+import { updateStaffTicketStatus, type StaffTicketWorkflowDatabase } from './tickets/ticket-workflow.js';
 import {
   createActionsTakenRouter,
   type ActionTakenApiDatabase,
@@ -276,6 +281,13 @@ export type TicketApiDatabase = {
       orderBy: { createdAt: 'asc' };
       select: Record<string, unknown>;
     }): Promise<PublicCommentRecord[]>;
+  };
+  ticketStatusHistory?: {
+    findMany(args: {
+      where: { ticketId: number };
+      orderBy: Array<{ createdAt: 'asc' } | { id: 'asc' }>;
+      select: Record<string, unknown>;
+    }): Promise<TicketStatusHistoryRecord[]>;
   };
 };
 
@@ -607,7 +619,7 @@ async function loadStaffTicketDetail(
     return null;
   }
 
-  const [attachments, publicComments, internalNotes, actionsTaken] = await Promise.all([
+  const [attachments, publicComments, internalNotes, actionsTaken, statusHistory] = await Promise.all([
     attachmentClient.findMany({
       where: { ticketId },
       orderBy: { uploadedAt: 'asc' },
@@ -630,6 +642,13 @@ async function loadStaffTicketDetail(
           select: ACTION_TAKEN_DETAIL_SELECT,
         })
       : Promise.resolve([]),
+    database.ticketStatusHistory?.findMany
+      ? database.ticketStatusHistory.findMany({
+          where: { ticketId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: STAFF_TICKET_STATUS_HISTORY_SELECT,
+        })
+      : Promise.resolve([]),
   ]);
 
   return {
@@ -638,6 +657,7 @@ async function loadStaffTicketDetail(
     publicComments,
     internalNotes,
     actionsTaken,
+    statusHistory,
   };
 }
 
@@ -721,6 +741,28 @@ function sendStaffTicketOperationFailure(
     response.status(409).json({
       error: error.message,
       code: 'RESOLUTION_ALREADY_RECORDED',
+    });
+    return;
+  }
+  if (error instanceof StaffTicketVersionConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'TICKET_VERSION_CONFLICT',
+      currentStatus: error.currentStatus,
+      currentVersion: error.currentVersion,
+    });
+    return;
+  }
+  if (error instanceof StaffTicketResolutionGateConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'RESOLUTION_GATE_BLOCKED',
+      currentStatus: error.currentStatus,
+      currentVersion: error.currentVersion,
+      gate: {
+        requiresAtLeastOneActionTaken: error.requiresAtLeastOneActionTaken,
+        incompleteRequiredFollowUps: error.incompleteRequiredFollowUps,
+      },
     });
     return;
   }
@@ -984,10 +1026,17 @@ export function createApp(
           throw new StaffTicketOwnerConflictError();
         }
       }
-      await staffDetailDatabase.ticket.update({
-        where: { id: ticketId },
-        data: { ownerId: input.ownerId },
-      });
+      if (input.ownerId !== (ticket.owner?.id ?? null)) {
+        const now = new Date();
+        await staffDetailDatabase.ticket.update({
+          where: { id: ticketId },
+          data: {
+            ownerId: input.ownerId,
+            version: { increment: 1 },
+            lastStaffActivityAt: now,
+          },
+        });
+      }
       const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
       if (!updatedTicket) {
         sendStaffTicketNotFound(response);
@@ -1019,10 +1068,18 @@ export function createApp(
         sendStaffTicketNotFound(response);
         return;
       }
-      await staffDetailDatabase.ticket.update({
-        where: { id: ticketId },
-        data: { itPriority: input.itPriority },
-      });
+      if (ticket.itPriority !== input.itPriority) {
+        const now = new Date();
+        await staffDetailDatabase.ticket.update({
+          where: { id: ticketId },
+          data: {
+            itPriority: input.itPriority,
+            version: { increment: 1 },
+            lastStaffActivityAt: now,
+            lastRequesterVisibleActivityAt: now,
+          },
+        });
+      }
       const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
       if (!updatedTicket) {
         sendStaffTicketNotFound(response);
@@ -1045,25 +1102,20 @@ export function createApp(
         throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
       }
       const input = parseStaffStatusPayload(request.body);
-      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
-      if (!staffDetailDatabase.ticket?.update) {
-        throw new Error('Staff Ticket status database access is unavailable.');
-      }
-      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
-      if (!ticket) {
+      const workflowDatabase = database as unknown as StaffTicketWorkflowDatabase;
+      const changed = await updateStaffTicketStatus(
+        workflowDatabase,
+        ticketId,
+        request.auth.user.id,
+        input,
+      );
+      if (!changed) {
         sendStaffTicketNotFound(response);
         return;
       }
-      const allowedStatuses = STAFF_TICKET_STATUS_TRANSITIONS[ticket.currentStatus];
-      if (!allowedStatuses.includes(input.currentStatus)) {
-        throw new StaffTicketTransitionConflictError(ticket.currentStatus, allowedStatuses);
-      }
-      await staffDetailDatabase.ticket.update({
-        where: { id: ticketId },
-        data: { currentStatus: input.currentStatus },
-      });
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
       const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
-      if (!updatedTicket) {
+      if (updatedTicket === null) {
         sendStaffTicketNotFound(response);
         return;
       }
@@ -1468,6 +1520,9 @@ export function createApp(
         data: {
           requesterResolvedAt: resolvedAt,
           requesterResolvedById: request.auth.user.id,
+          version: { increment: 1 },
+          lastStaffActivityAt: resolvedAt,
+          lastRequesterVisibleActivityAt: resolvedAt,
         },
       });
       response.status(200).json({
@@ -1578,6 +1633,13 @@ export function createApp(
             select: REQUESTER_ACTION_TAKEN_DETAIL_SELECT,
           })
         : [];
+      const statusHistory = database.ticketStatusHistory?.findMany
+        ? await database.ticketStatusHistory.findMany({
+            where: { ticketId },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            select: STAFF_TICKET_STATUS_HISTORY_SELECT,
+          })
+        : [];
 
       response.status(200).json({
         ticket: {
@@ -1585,6 +1647,7 @@ export function createApp(
           attachments: attachments.map(serializeAttachment),
           publicComments: publicComments.map(serializePublicComment),
           actionsTaken: actionsTaken.map((action) => serializeActionTaken(action, false)),
+          statusHistory: statusHistory.map(serializeTicketStatusHistoryEvent),
           requesterResolution: ticket.requesterResolvedAt && ticket.requesterResolvedBy
             ? {
                 resolvedAt: ticket.requesterResolvedAt,
@@ -1647,6 +1710,14 @@ export function createApp(
             summary: input.summary,
             description: input.description,
             requestedPriority: input.requestedPriority,
+            statusHistory: {
+              create: {
+                fromStatus: null,
+                toStatus: 'NEW',
+                actorId: authenticatedRequesterId,
+                eventKind: 'INITIAL',
+              },
+            },
           },
         });
         const ticketNumber = `TKT-${utcYear}-${String(createdTicket.id).padStart(6, '0')}`;

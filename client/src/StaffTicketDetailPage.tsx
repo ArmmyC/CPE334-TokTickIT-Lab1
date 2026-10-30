@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { apiErrorMessage, apiFetch, isApiErrorBody, readJson } from './api';
 import { useAuth } from './auth-context';
 import { AttachmentSection, type Attachment } from './TicketDetailPage';
+import { isTicketStatusHistoryItem, TicketStatusHistory, type TicketStatusHistoryItem } from './TicketStatusHistory';
 
 type TicketReference = {
   id: number;
@@ -58,6 +59,8 @@ type StaffTicket = {
   requestedPriority: TicketPriority;
   itPriority: TicketPriority | null;
   currentStatus: TicketStatus;
+  version: number;
+  statusHistory: TicketStatusHistoryItem[];
   owner: TicketOwner | null;
   attachments: Attachment[];
   publicComments: TicketCommunication[];
@@ -75,6 +78,8 @@ type DetailRequestErrorBody = {
   error?: string;
   code?: string;
   allowedStatuses?: unknown;
+  currentStatus?: string;
+  currentVersion?: number;
 };
 
 class DetailRequestError extends Error {
@@ -107,6 +112,16 @@ const statusOptions: Array<[TicketStatus, string]> = [
 
 const confirmationStatuses = new Set<TicketStatus>(['RESOLVED', 'CLOSED', 'CANCELLED']);
 const roles = new Set(['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR']);
+const allowedStatusTransitions: Record<TicketStatus, TicketStatus[]> = {
+  NEW: ['OPEN', 'CANCELLED'],
+  OPEN: ['IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'CANCELLED'],
+  IN_PROGRESS: ['WAITING_FOR_REQUESTER', 'RESOLVED', 'CANCELLED'],
+  WAITING_FOR_REQUESTER: ['IN_PROGRESS', 'RESOLVED', 'CANCELLED'],
+  RESOLVED: ['CLOSED', 'REOPENED'],
+  CLOSED: ['REOPENED'],
+  REOPENED: ['IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'CANCELLED'],
+  CANCELLED: ['REOPENED'],
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -185,6 +200,10 @@ function isStaffTicketDetailResponse(value: unknown): value is StaffTicketDetail
     && (ticket.itPriority === null || priorityOptions.some(([priority]) => priority === ticket.itPriority))
     && typeof ticket.currentStatus === 'string'
     && statusOptions.some(([status]) => status === ticket.currentStatus)
+    && Number.isSafeInteger(ticket.version)
+    && (ticket.version as number) >= 0
+    && Array.isArray(ticket.statusHistory)
+    && ticket.statusHistory.every(isTicketStatusHistoryItem)
     && (ticket.owner === null || isOwner(ticket.owner))
     && Array.isArray(ticket.attachments)
     && ticket.attachments.every(isAttachment)
@@ -250,6 +269,12 @@ function formatOperationError(error: unknown): string {
   if (!(error instanceof DetailRequestError)) {
     return 'The operation could not be completed. Try again.';
   }
+  if (error.body?.code === 'TICKET_VERSION_CONFLICT') {
+    return 'This Ticket changed after you loaded it. Refresh the current Ticket and review the status before trying again.';
+  }
+  if (error.body?.code === 'RESOLUTION_GATE_BLOCKED') {
+    return 'Cannot resolve or close this Ticket until at least one Action Taken exists and every required follow-up is marked complete.';
+  }
   if (Array.isArray(error.body?.allowedStatuses) && error.body.allowedStatuses.length > 0) {
     const allowed = error.body.allowedStatuses.filter((value): value is string => typeof value === 'string');
     if (allowed.length > 0) {
@@ -295,13 +320,17 @@ export function StaffTicketDetailPage() {
   const [retryKey, setRetryKey] = useState(0);
   const [ownerIdInput, setOwnerIdInput] = useState('');
   const [priorityInput, setPriorityInput] = useState<TicketPriority | ''>('');
-  const [statusInput, setStatusInput] = useState<TicketStatus>('NEW');
+  const [statusInput, setStatusInput] = useState<TicketStatus | ''>('');
   const [pendingStatus, setPendingStatus] = useState<TicketStatus | null>(null);
+  const [needsStatusRefresh, setNeedsStatusRefresh] = useState(false);
+  const [unavailableStatusSelection, setUnavailableStatusSelection] = useState<TicketStatus | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const statusTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const preserveStatusSelectionRef = useRef<TicketStatus | ''>('');
   const statusCancelRef = useRef<HTMLButtonElement | null>(null);
   const previousPendingStatusRef = useRef<TicketStatus | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [operationErrorCode, setOperationErrorCode] = useState<string | null>(null);
   const [operationSuccess, setOperationSuccess] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [noteText, setNoteText] = useState('');
@@ -314,7 +343,7 @@ export function StaffTicketDetailPage() {
     setDetail(nextDetail);
     setOwnerIdInput(nextDetail.ticket.owner ? String(nextDetail.ticket.owner.id) : '');
     setPriorityInput(nextDetail.ticket.itPriority ?? '');
-    setStatusInput(nextDetail.ticket.currentStatus);
+    setStatusInput('');
   };
 
   useEffect(() => {
@@ -333,6 +362,17 @@ export function StaffTicketDetailPage() {
       .then((body) => {
         if (cancelled) return;
         applyDetail(body);
+        const previousSelection = preserveStatusSelectionRef.current;
+        if (previousSelection) {
+          if (allowedStatusTransitions[body.ticket.currentStatus].includes(previousSelection)) {
+            setStatusInput(previousSelection);
+            setUnavailableStatusSelection(null);
+          } else {
+            setUnavailableStatusSelection(previousSelection);
+          }
+        }
+        preserveStatusSelectionRef.current = '';
+        setNeedsStatusRefresh(false);
         setLoadState('ready');
       })
       .catch((error: unknown) => {
@@ -367,11 +407,18 @@ export function StaffTicketDetailPage() {
     if (busyAction) return;
     setBusyAction(action);
     setOperationError(null);
+    setOperationErrorCode(null);
     setOperationSuccess(null);
     try {
       await callback();
     } catch (error: unknown) {
       setOperationError(formatOperationError(error));
+      if (error instanceof DetailRequestError) {
+        setOperationErrorCode(error.body?.code ?? null);
+      }
+      if (error instanceof DetailRequestError && error.body?.code === 'TICKET_VERSION_CONFLICT') {
+        setNeedsStatusRefresh(true);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -429,13 +476,13 @@ export function StaffTicketDetailPage() {
     });
   };
 
-  const saveStatus = (currentStatus: TicketStatus, confirmed: boolean) => {
+  const saveStatus = (nextStatus: TicketStatus, confirmed: boolean) => {
     const ticketId = Number(ticketIdParam);
     void runMutation('status', async () => {
       const body = await requestJson(`/api/staff/tickets/${ticketId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentStatus, confirmed }),
+        body: JSON.stringify({ expectedVersion: detail?.ticket.version, nextStatus, confirmed }),
       }, 'Unable to update Ticket status.');
       if (!isStaffTicketDetailResponse(body)) {
         throw new DetailRequestError('Unable to update Ticket status.', 200);
@@ -446,6 +493,11 @@ export function StaffTicketDetailPage() {
   };
 
   const requestStatusUpdate = () => {
+    if (!statusInput) {
+      setOperationError('Choose a permitted next status before saving.');
+      setOperationSuccess(null);
+      return;
+    }
     if (confirmationStatuses.has(statusInput)) {
       setPendingStatus(statusInput);
       setOperationError(null);
@@ -453,6 +505,13 @@ export function StaffTicketDetailPage() {
       return;
     }
     saveStatus(statusInput, false);
+  };
+
+  const refreshCurrentTicket = () => {
+    preserveStatusSelectionRef.current = statusInput;
+    setNeedsStatusRefresh(false);
+    setUnavailableStatusSelection(null);
+    setRetryKey((key) => key + 1);
   };
 
   const postComment = (event: React.FormEvent<HTMLFormElement>) => {
@@ -613,13 +672,30 @@ export function StaffTicketDetailPage() {
                   </div>
                 </div>
                 <div className="ticket-field staff-editable-field">
-                  <label htmlFor="staff-current-status">Current Status</label>
-                  <select id="staff-current-status" value={statusInput} onChange={(event) => setStatusInput(event.target.value as TicketStatus)}>
-                    {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  <label htmlFor="staff-current-status">Next Status</label>
+                  <select
+                    id="staff-current-status"
+                    value={statusInput}
+                    onChange={(event) => {
+                      setStatusInput(event.target.value as TicketStatus | '');
+                      setUnavailableStatusSelection(null);
+                      setOperationError(null);
+                      setOperationErrorCode(null);
+                    }}
+                    aria-describedby="staff-status-help"
+                  >
+                    <option value="">Choose a permitted next status</option>
+                    {allowedStatusTransitions[detail.ticket.currentStatus].map((nextStatus) => {
+                      const label = statusOptions.find(([value]) => value === nextStatus)?.[1] ?? nextStatus;
+                      return <option key={nextStatus} value={nextStatus}>{label}</option>;
+                    })}
                   </select>
-                  <small>Invalid transitions are checked by the API. Resolved, Closed, and Cancelled require confirmation.</small>
+                  <small id="staff-status-help">Current status is {detail.ticket.currentStatus}. Resolved, Closed, and Cancelled require confirmation.</small>
+                  {unavailableStatusSelection && (
+                    <small role="status">Your previous selection, {unavailableStatusSelection}, is no longer permitted from the current status. Choose another next status.</small>
+                  )}
                   <div className="action-row">
-                    <button ref={statusTriggerRef} type="button" className="btn btn-primary" onClick={requestStatusUpdate} disabled={busyAction === 'status'}>
+                    <button ref={statusTriggerRef} type="button" className="btn btn-primary" onClick={requestStatusUpdate} disabled={busyAction === 'status' || needsStatusRefresh || !statusInput}>
                       {busyAction === 'status' ? 'Saving Status...' : 'Update Status'}
                     </button>
                   </div>
@@ -643,7 +719,17 @@ export function StaffTicketDetailPage() {
                 </div>
               </div>
             )}
-            {operationError && <p role="alert" className="state-message state-message-error">{operationError}</p>}
+            {operationError && (
+              <div role="alert" className="state-message state-message-error">
+                <p>{operationError}</p>
+                {operationErrorCode === 'RESOLUTION_GATE_BLOCKED' && (
+                  <a className="btn btn-secondary" href="#actions-taken">Review Actions Taken</a>
+                )}
+                {needsStatusRefresh && (
+                  <button type="button" className="btn btn-secondary" onClick={refreshCurrentTicket}>Refresh current Ticket</button>
+                )}
+              </div>
+            )}
             {operationSuccess && <p role="status" className="state-message state-message-success">{operationSuccess}</p>}
           </section>
 
@@ -670,6 +756,11 @@ export function StaffTicketDetailPage() {
               </div>
             </div>
           )}
+
+          <TicketStatusHistory
+            entries={detail.ticket.statusHistory}
+            description="Formal Ticket status changes are recorded here in chronological order. This history is read-only."
+          />
 
           <AttachmentSection
             ticketId={detail.ticket.id}

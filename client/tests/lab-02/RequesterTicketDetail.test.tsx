@@ -25,6 +25,7 @@ const detailResponse = {
     requestedPriority: 'MEDIUM',
     itPriority: null,
     currentStatus: 'NEW',
+    statusHistory: [],
     owner: null,
     attachments: [
       {
