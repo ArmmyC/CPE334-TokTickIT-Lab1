@@ -43,6 +43,8 @@ const ticketDetail = {
   requestedPriority: 'MEDIUM',
   itPriority: null,
   currentStatus: 'NEW',
+  version: 0,
+  lastRequesterVisibleActivityAt: ticketDate,
   requesterResolvedAt: null,
   requesterResolvedBy: null,
   owner: null,
@@ -129,6 +131,7 @@ describe('Lab 2 Ticket Detail API', () => {
         requestedPriority: 'MEDIUM',
         itPriority: null,
         currentStatus: 'NEW',
+        actionsTaken: [],
         attachments: [
           expect.objectContaining({
             id: 7,
@@ -147,6 +150,8 @@ describe('Lab 2 Ticket Detail API', () => {
         requesterResolution: null,
         createdAt: ticketDate.toISOString(),
         updatedAt: ticketDate.toISOString(),
+        version: 0,
+        lastActivityAt: ticketDate.toISOString(),
       },
     });
     expect(JSON.stringify(response.body)).not.toContain('storageKey');

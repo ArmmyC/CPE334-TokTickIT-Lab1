@@ -18,6 +18,11 @@ import {
 import { createAuthRouter } from './auth/routes.js';
 import type { AuthDatabase } from './auth/types.js';
 import {
+  ACTION_TAKEN_DETAIL_SELECT,
+  REQUESTER_ACTION_TAKEN_DETAIL_SELECT,
+  serializeActionTaken,
+} from './tickets/actions-taken.js';
+import {
   AdminUserConflictError,
   AdminUserNotFoundError,
   AdminUserValidationError,
@@ -58,6 +63,10 @@ import {
   type StaffTicketDetailRecord,
   type StaffTicketDetailDatabase,
 } from './tickets/staff-detail.js';
+import {
+  createActionsTakenRouter,
+  type ActionTakenApiDatabase,
+} from './tickets/actions-taken-api.js';
 
 export type CategoryRecord = {
   id: number;
@@ -114,6 +123,8 @@ export type TicketRecord = {
 };
 
 export type TicketDetailRecord = TicketRecord & {
+  version: number;
+  lastRequesterVisibleActivityAt: Date;
   requester: {
     id: number;
     name: string;
@@ -521,6 +532,8 @@ function serializeTicketDetail(ticket: TicketDetailRecord) {
     currentStatus: ticket.currentStatus,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
+    version: ticket.version,
+    lastActivityAt: ticket.lastRequesterVisibleActivityAt,
   };
 }
 
@@ -594,7 +607,7 @@ async function loadStaffTicketDetail(
     return null;
   }
 
-  const [attachments, publicComments, internalNotes] = await Promise.all([
+  const [attachments, publicComments, internalNotes, actionsTaken] = await Promise.all([
     attachmentClient.findMany({
       where: { ticketId },
       orderBy: { uploadedAt: 'asc' },
@@ -610,6 +623,13 @@ async function loadStaffTicketDetail(
       orderBy: { createdAt: 'asc' },
       select: STAFF_TICKET_COMMUNICATION_SELECT,
     }),
+    database.actionTaken?.findMany
+      ? database.actionTaken.findMany({
+          where: { ticketId },
+          orderBy: [{ actionAt: 'asc' }, { id: 'asc' }],
+          select: ACTION_TAKEN_DETAIL_SELECT,
+        })
+      : Promise.resolve([]),
   ]);
 
   return {
@@ -617,6 +637,7 @@ async function loadStaffTicketDetail(
     attachments,
     publicComments,
     internalNotes,
+    actionsTaken,
   };
 }
 
@@ -748,6 +769,7 @@ export function createApp(
   });
 
   app.use('/api', requireNormalAccess(database));
+  app.use('/api', createActionsTakenRouter(database as unknown as ActionTakenApiDatabase));
 
   app.get('/api/admin/users', requireRole(database, ['ADMINISTRATOR']), async (request, response) => {
     try {
@@ -1508,6 +1530,8 @@ export function createApp(
           },
           createdAt: true,
           updatedAt: true,
+          version: true,
+          lastRequesterVisibleActivityAt: true,
         },
       });
       if (!ticket || ticket.requesterId !== request.auth.user.id) {
@@ -1546,11 +1570,21 @@ export function createApp(
           })
         : [];
 
+      const actionDatabase = database as unknown as ActionTakenApiDatabase;
+      const actionsTaken = actionDatabase.actionTaken?.findMany
+        ? await actionDatabase.actionTaken.findMany({
+            where: { ticketId },
+            orderBy: [{ actionAt: 'asc' }, { id: 'asc' }],
+            select: REQUESTER_ACTION_TAKEN_DETAIL_SELECT,
+          })
+        : [];
+
       response.status(200).json({
         ticket: {
           ...serializeTicketDetail(ticket),
           attachments: attachments.map(serializeAttachment),
           publicComments: publicComments.map(serializePublicComment),
+          actionsTaken: actionsTaken.map((action) => serializeActionTaken(action, false)),
           requesterResolution: ticket.requesterResolvedAt && ticket.requesterResolvedBy
             ? {
                 resolvedAt: ticket.requesterResolvedAt,
