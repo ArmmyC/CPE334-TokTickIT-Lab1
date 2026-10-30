@@ -459,6 +459,37 @@ describe('Lab 4 Actions Taken UI', () => {
     expect(within(actions).getByRole('button', { name: 'Add Action Taken' })).toBeEnabled();
   });
 
+  it('reuses the create idempotency key when retrying after a network failure', async () => {
+    const fetchMock = stubStaffDetailApi();
+    setPath('/staff/tickets/12');
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await screen.findByRole('heading', { name: 'Staff Ticket Detail' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Action Taken' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Action Description' }), {
+      target: { value: 'Retry this action after a lost response.' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Result' }), {
+      target: { value: 'The first request may already have committed.' },
+    });
+    fetchMock.mockRejectedValueOnce(new Error('Connection dropped after the request.'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Action Taken' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to save the Action Taken. Your entries are preserved.');
+    const createCalls = () => fetchMock.mock.calls.filter(([input, init]) => (
+      String(input) === '/api/staff/tickets/12/actions' && init?.method === 'POST'
+    ));
+    expect(createCalls()).toHaveLength(1);
+    const firstKey = (createCalls()[0]?.[1]?.headers as Record<string, string>)['Idempotency-Key'];
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Action Taken' }));
+
+    await waitFor(() => expect(createCalls()).toHaveLength(2));
+    const retryKey = (createCalls()[1]?.[1]?.headers as Record<string, string>)['Idempotency-Key'];
+    expect(retryKey).toBe(firstKey);
+    expect(await screen.findByText('Retry this action after a lost response.')).toBeInTheDocument();
+  });
+
   it('ignores repeated submit events while the create request is in progress', async () => {
     let resolveCreate!: (response: ReturnType<typeof jsonResponse>) => void;
     const createResponse = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {

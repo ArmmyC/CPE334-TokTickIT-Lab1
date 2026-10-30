@@ -152,6 +152,7 @@ export function ActionsTakenSection({
   const [canReload, setCanReload] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const savingRef = useRef(false);
+  const createIdempotencyKeyRef = useRef<string | null>(null);
   const clearFieldError = (field: string) => {
     setFieldErrors((current) => {
       if (!(field in current)) return current;
@@ -164,6 +165,7 @@ export function ActionsTakenSection({
 
   const startCreate = () => {
     if (!canWrite || isSaving) return;
+    createIdempotencyKeyRef.current = globalThis.crypto.randomUUID();
     setForm(createEmptyForm());
     setFieldErrors({});
     setFormError(null);
@@ -175,6 +177,7 @@ export function ActionsTakenSection({
 
   const startEdit = (action: ActionTaken) => {
     if (!canWrite || isSaving) return;
+    createIdempotencyKeyRef.current = null;
     setForm({
       actionAt: toLocalDateTimeValue(new Date(action.actionAt)),
       description: action.description,
@@ -194,6 +197,7 @@ export function ActionsTakenSection({
 
   const cancelCreate = () => {
     if (isSaving) return;
+    createIdempotencyKeyRef.current = null;
     setIsCreating(false);
     setEditingActionId(null);
     setFieldErrors({});
@@ -251,6 +255,10 @@ export function ActionsTakenSection({
         followUpNote: form.followUpRequired === 'yes' ? form.followUpNote.trim() : null,
         attachmentNotes: form.attachmentNotes.trim() || null,
       };
+      const idempotencyKey = isUpdate
+        ? null
+        : (createIdempotencyKeyRef.current ?? globalThis.crypto.randomUUID());
+      if (idempotencyKey) createIdempotencyKeyRef.current = idempotencyKey;
       const response = await apiFetch(
         isUpdate
           ? `/api/staff/tickets/${ticketId}/actions/${actionToEdit.id}`
@@ -259,7 +267,7 @@ export function ActionsTakenSection({
           method: isUpdate ? 'PATCH' : 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(!isUpdate ? { 'Idempotency-Key': globalThis.crypto.randomUUID() } : {}),
+            ...(!isUpdate && idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
           },
           body: JSON.stringify(requestBody),
         },
@@ -279,6 +287,7 @@ export function ActionsTakenSection({
         setFormError('The Action Taken response was incomplete. Your entries are preserved.');
         return;
       }
+      if (!isUpdate) createIdempotencyKeyRef.current = null;
       setIsCreating(false);
       setEditingActionId(null);
       setFormSuccess('Action Taken saved. Ticket details are refreshing.');
