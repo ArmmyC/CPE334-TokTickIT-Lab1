@@ -1,6 +1,6 @@
 # Lab 4 Engineering Specification
 
-**Status:** Approved by the student. Product implementation may begin after the Issue #64 PR is reviewed, its comments are resolved, and it is merged to `lab4-staging`.
+**Status:** Approved by the student. Implement the contract through the approved Issue sequence and reviewed PRs to `lab4-staging`.
 **Staging branch:** `lab4-staging`
 **Release target:** `main`
 **Lab 3 baseline:** PR #63, the Lab 3 screenshot integration, merged to `lab3-staging`.

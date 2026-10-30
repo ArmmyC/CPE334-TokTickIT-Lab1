@@ -1,6 +1,6 @@
 # Lab 4 UI Specification
 
-**Status:** Approved by the student. Implementation may begin after PR #71 comments are resolved and the reviewer merges it to `lab4-staging`.
+**Status:** Approved by the student. Implement the contract through the approved Issue sequence and reviewed PRs to `lab4-staging`.
 **Visual baseline:** Reuse the Lab 2–3 Zen Green system and shared AuthenticatedShell.
 
 ## 1. Design Tokens and Shared Rules

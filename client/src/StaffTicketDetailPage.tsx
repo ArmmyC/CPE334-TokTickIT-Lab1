@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiErrorMessage, apiFetch, isApiErrorBody, readJson } from './api';
 import { useAuth } from './auth-context';
+import { ActionsTakenSection, isActionTaken, type ActionTaken } from './ActionsTakenSection';
 import { AttachmentSection, type Attachment } from './TicketDetailPage';
 import { isTicketStatusHistoryItem, TicketStatusHistory, type TicketStatusHistoryItem } from './TicketStatusHistory';
 
@@ -61,6 +62,7 @@ type StaffTicket = {
   currentStatus: TicketStatus;
   version: number;
   statusHistory: TicketStatusHistoryItem[];
+  actionsTaken: ActionTaken[];
   owner: TicketOwner | null;
   attachments: Attachment[];
   publicComments: TicketCommunication[];
@@ -204,6 +206,8 @@ function isStaffTicketDetailResponse(value: unknown): value is StaffTicketDetail
     && (ticket.version as number) >= 0
     && Array.isArray(ticket.statusHistory)
     && ticket.statusHistory.every(isTicketStatusHistoryItem)
+    && Array.isArray(ticket.actionsTaken)
+    && ticket.actionsTaken.every(isActionTaken)
     && (ticket.owner === null || isOwner(ticket.owner))
     && Array.isArray(ticket.attachments)
     && ticket.attachments.every(isAttachment)
@@ -353,8 +357,9 @@ export function StaffTicketDetailPage() {
       setErrorMessage('Ticket not found.');
       return undefined;
     }
+    const canRefreshInPlace = detail?.ticket.id === ticketId;
     let cancelled = false;
-    setLoadState('loading');
+    if (!canRefreshInPlace) setLoadState('loading');
     setErrorMessage(null);
     setOperationError(null);
     setOperationSuccess(null);
@@ -377,8 +382,16 @@ export function StaffTicketDetailPage() {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setLoadState('error');
-        if (error instanceof DetailRequestError && error.status === 401) {
+        if (canRefreshInPlace) {
+          setLoadState('ready');
+          setOperationError('Unable to refresh Ticket Detail. Your unsaved Actions Taken values are preserved. Refresh again before submitting.');
+          setOperationErrorCode(null);
+        } else {
+          setLoadState('error');
+        }
+        if (canRefreshInPlace) {
+          return;
+        } else if (error instanceof DetailRequestError && error.status === 401) {
           setErrorMessage('Your session has expired. Please sign in again.');
         } else if (error instanceof DetailRequestError && error.status === 403) {
           setErrorMessage('You do not have permission to access this Ticket Detail.');
@@ -632,6 +645,15 @@ export function StaffTicketDetailPage() {
               <div className="ticket-detail-field ticket-detail-field-wide"><dt>Description</dt><dd className="ticket-detail-description">{detail.ticket.description}</dd></div>
             </dl>
           </section>
+
+          <ActionsTakenSection
+            actionsTaken={detail.ticket.actionsTaken}
+            ticketId={detail.ticket.id}
+            ticketStatus={detail.ticket.currentStatus}
+            canEdit={user.role === 'IT_STAFF' || user.role === 'ADMINISTRATOR'}
+            currentUser={user}
+            onChanged={() => setRetryKey((key) => key + 1)}
+          />
 
           <section className="ticket-detail-card staff-operational-card" aria-labelledby="operational-controls-title">
             <h2 id="operational-controls-title">Operational Controls</h2>

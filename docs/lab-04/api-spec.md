@@ -1,6 +1,6 @@
 # Lab 4 REST API Specification
 
-**Status:** Approved by the student. Implementation may begin after PR #71 comments are resolved and the reviewer merges it to `lab4-staging`.
+**Status:** Approved by the student. Implement the contract through the approved Issue sequence and reviewed PRs to `lab4-staging`.
 **Base path:** `/api`
 **Compatibility:** Preserve all approved Lab 2–3 routes and behavior.
 

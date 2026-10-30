@@ -36,6 +36,7 @@ const detailResponse = {
     currentStatus: 'IN_PROGRESS',
     version: 4,
     statusHistory: [],
+    actionsTaken: [],
     owner: { id: 3, name: 'Somsak Staff', email: 'somsak@example.test', role: 'IT_STAFF' },
     attachments: [{
       id: 7,

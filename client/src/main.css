@@ -159,6 +159,27 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .ticket-detail-header-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; min-width: min(100%, 680px); }
 .ticket-detail-card { margin-top: 1.25rem; padding: 1.25rem; border: 1px solid #d6e4dc; border-radius: .75rem; background: #fff; }
 .ticket-detail-card h2 { margin-bottom: 1.1rem; color: var(--zen-primary); font-size: 1.2rem; }
+.actions-taken-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.actions-taken-heading h2 { margin-bottom: 0; }
+.actions-taken-list { display: grid; gap: 1rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.actions-taken-card { min-width: 0; padding: 1rem; border: 1px solid #d6e4dc; border-radius: .65rem; background: #fbfdfb; }
+.actions-taken-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.actions-taken-card-heading .btn { flex: 0 0 auto; }
+.actions-taken-card h3 { margin: 0 0 .85rem; color: var(--zen-text); font-size: 1rem; }
+.actions-taken-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem 1.25rem; margin: 0; }
+.actions-taken-field { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.actions-taken-field dt, .actions-taken-label { margin-bottom: .2rem; color: #496658; font-size: .85rem; font-weight: 700; }
+.actions-taken-field dd { margin: 0; }
+.actions-taken-form { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #d6e4dc; }
+.actions-taken-form-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.actions-taken-section { scroll-margin-top: 1rem; }
+.actions-taken-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.actions-taken-form-grid .ticket-field { min-width: 0; }
+.actions-taken-form-grid textarea { min-height: 6rem; }
+.actions-taken-form-grid .ticket-field-readonly p { margin: 0; }
+.actions-taken-checkbox-label { display: inline-flex !important; align-items: center; gap: .55rem; cursor: pointer; }
+.actions-taken-checkbox-label input { width: auto !important; min-height: 1rem !important; margin: 0; }
+.actions-taken-error-summary { margin: .35rem 0 0; padding-left: 1.25rem; }
 .ticket-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem 1.5rem; margin: 0; }
 .ticket-detail-field { min-width: 0; }
 .ticket-detail-field-wide { grid-column: 1 / -1; }
@@ -249,6 +270,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .ticket-field-wide { grid-column: auto; }
   .action-row { align-items: stretch; flex-direction: column; }
   .action-row .btn { width: 100%; }
+  .actions-taken-heading { align-items: stretch; flex-direction: column; }
+  .actions-taken-heading .btn { width: 100%; }
+  .actions-taken-details, .actions-taken-form-grid { grid-template-columns: minmax(0, 1fr); }
   .selected-files li { align-items: flex-start; flex-wrap: wrap; }
   .file-state { margin-left: 0; }
   .selected-file-remove { margin-left: auto; }
