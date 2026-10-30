@@ -276,7 +276,13 @@ describe('Lab 3 Ticket communication and resolution API', () => {
     expect(harness.ticket.currentStatus).toBe('NEW');
     expect(harness.ticketUpdate).toHaveBeenCalledWith({
       where: { id: 12 },
-      data: { requesterResolvedAt: expect.any(Date), requesterResolvedById: 1 },
+      data: {
+        requesterResolvedAt: expect.any(Date),
+        requesterResolvedById: 1,
+        version: { increment: 1 },
+        lastStaffActivityAt: expect.any(Date),
+        lastRequesterVisibleActivityAt: expect.any(Date),
+      },
     });
 
     const repeatedResponse = await requester.agent

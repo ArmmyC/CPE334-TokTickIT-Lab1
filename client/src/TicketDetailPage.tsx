@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from './auth-context';
 import { apiErrorMessage, apiFetch, isApiErrorBody, readJson } from './api';
+import { isTicketStatusHistoryItem, TicketStatusHistory, type TicketStatusHistoryItem } from './TicketStatusHistory';
 
 type TicketReference = {
   id: number;
@@ -46,6 +47,7 @@ type TicketDetail = {
   requestedPriority: string;
   itPriority: string | null;
   currentStatus: string;
+  statusHistory: TicketStatusHistoryItem[];
   owner: TicketOwner | null;
   attachments: Attachment[];
   publicComments: PublicComment[];
@@ -146,6 +148,8 @@ function isTicketDetailResponse(value: unknown): value is TicketDetailResponse {
     typeof ticket.requestedPriority === 'string' &&
     (ticket.itPriority === null || typeof ticket.itPriority === 'string') &&
     typeof ticket.currentStatus === 'string' &&
+    Array.isArray(ticket.statusHistory) &&
+    ticket.statusHistory.every(isTicketStatusHistoryItem) &&
     (ticket.owner === null || isOwner(ticket.owner)) &&
     Array.isArray(ticket.attachments) &&
     ticket.attachments.every(isAttachment) &&
@@ -744,6 +748,11 @@ export function TicketDetailPage() {
               <div className="ticket-detail-field ticket-detail-field-wide"><dt>Description</dt><dd className="ticket-detail-description">{detail.ticket.description}</dd></div>
             </dl>
           </section>
+
+          <TicketStatusHistory
+            entries={detail.ticket.statusHistory}
+            description="Formal Ticket status changes are shown in chronological order. The Ticket Owner is shown separately from each status change actor."
+          />
 
           <AttachmentSection
             ticketId={detail.ticket.id}

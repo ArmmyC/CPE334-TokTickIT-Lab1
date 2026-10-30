@@ -283,6 +283,14 @@ describe('Lab 2 reference data and ticket creation API', () => {
         description: 'The battery drains while the laptop is idle.',
         requestedPriority: 'MEDIUM',
         ticketNumber: expect.stringMatching(/^TKT-\d{4}-TMP-[a-z0-9]+$/),
+        statusHistory: {
+          create: {
+            fromStatus: null,
+            toStatus: 'NEW',
+            actorId: 1,
+            eventKind: 'INITIAL',
+          },
+        },
       }),
     });
     expect(transaction.ticket.update).toHaveBeenCalledWith({

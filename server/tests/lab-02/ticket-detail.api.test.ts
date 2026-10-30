@@ -132,6 +132,7 @@ describe('Lab 2 Ticket Detail API', () => {
         itPriority: null,
         currentStatus: 'NEW',
         actionsTaken: [],
+        statusHistory: [],
         attachments: [
           expect.objectContaining({
             id: 7,
