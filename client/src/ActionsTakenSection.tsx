@@ -122,6 +122,15 @@ function DetailField({ label, children }: { label: string; children: ReactNode }
   return <div className="actions-taken-field"><dt>{label}</dt><dd>{children}</dd></div>;
 }
 
+function RequiredFieldLabel({ htmlFor, children }: { htmlFor: string; children: ReactNode }) {
+  return (
+    <div className="actions-taken-required-label">
+      <label htmlFor={htmlFor}>{children}</label>
+      <span className="required-field-indicator" aria-hidden="true">*</span>
+    </div>
+  );
+}
+
 export function ActionsTakenSection({
   actionsTaken,
   ticketId,
@@ -357,7 +366,7 @@ export function ActionsTakenSection({
           <fieldset className="actions-taken-form-fields" disabled={isSaving || !canWrite} aria-label="Action Taken details">
           <div className="actions-taken-form-grid">
             <div className="ticket-field">
-              <label htmlFor="action-taken-action-at">Action Date/Time <span aria-hidden="true">*</span></label>
+              <RequiredFieldLabel htmlFor="action-taken-action-at">Action Date/Time</RequiredFieldLabel>
               <input
                 id="action-taken-action-at"
                 type="datetime-local"
@@ -373,7 +382,7 @@ export function ActionsTakenSection({
               {fieldErrors.actionAt && <small id="action-taken-action-at-error" className="field-error">{fieldErrors.actionAt}</small>}
             </div>
             <div className="ticket-field">
-              <label htmlFor="action-taken-description">Action Description <span aria-hidden="true">*</span></label>
+              <RequiredFieldLabel htmlFor="action-taken-description">Action Description</RequiredFieldLabel>
               <textarea
                 id="action-taken-description"
                 required
@@ -390,7 +399,7 @@ export function ActionsTakenSection({
               {fieldErrors.description && <small id="action-taken-description-error" className="field-error">{fieldErrors.description}</small>}
             </div>
             <div className="ticket-field">
-              <label htmlFor="action-taken-result">Result <span aria-hidden="true">*</span></label>
+              <RequiredFieldLabel htmlFor="action-taken-result">Result</RequiredFieldLabel>
               <textarea
                 id="action-taken-result"
                 required
@@ -407,7 +416,7 @@ export function ActionsTakenSection({
               {fieldErrors.result && <small id="action-taken-result-error" className="field-error">{fieldErrors.result}</small>}
             </div>
             <div className="ticket-field">
-              <label htmlFor="action-taken-follow-up-required">Follow-Up Required <span aria-hidden="true">*</span></label>
+              <RequiredFieldLabel htmlFor="action-taken-follow-up-required">Follow-Up Required</RequiredFieldLabel>
               <select
                 id="action-taken-follow-up-required"
                 value={form.followUpRequired}
@@ -454,7 +463,7 @@ export function ActionsTakenSection({
             )}
             {form.followUpRequired === 'yes' && (
               <div className="ticket-field">
-                <label htmlFor="action-taken-follow-up-note">Follow-Up Note <span aria-hidden="true">*</span></label>
+                <RequiredFieldLabel htmlFor="action-taken-follow-up-note">Follow-Up Note</RequiredFieldLabel>
                 <textarea
                   id="action-taken-follow-up-note"
                   required

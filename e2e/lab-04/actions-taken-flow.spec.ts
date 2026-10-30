@@ -64,7 +64,7 @@ test('Staff can create and edit Actions Taken while preserving performer and req
 
   const actions = page.getByRole('region', { name: 'Actions Taken', exact: true });
   await expect(actions.getByText('Narin Chai', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Ticket Owner', { exact: true }).locator('..')).toContainText('Somchai Rattanakul');
+  await expect(page.getByText('Ticket Owner', { exact: true }).locator('..')).toContainText(SEEDED_ACCOUNTS.secondaryStaff.name);
   await expect(actions).toContainText('Chaiwat Kittisak');
   await assertNoHorizontalOverflow(page, 'Staff Actions Taken before editing');
 
@@ -81,7 +81,7 @@ test('Staff can create and edit Actions Taken while preserving performer and req
   await page.getByLabel('Result', { exact: true }).fill('Connection stayed stable during the follow-up check.');
   await page.getByLabel('Follow-Up Required', { exact: true }).selectOption('yes');
   await page.getByRole('button', { name: 'Save Action Taken', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Follow-Up Note is required');
+  await expect(actions.getByRole('alert')).toContainText('Follow-Up Note is required');
   await expect(page.getByLabel('Action Description', { exact: true })).toHaveValue(description);
   await saveActionsScreenshot(page, testInfo.project.name, 'staff-follow-up-validation');
 
@@ -98,7 +98,7 @@ test('Staff can create and edit Actions Taken while preserving performer and req
   await page.getByRole('checkbox', { name: 'Follow-Up Completed', exact: true }).check();
   await page.getByLabel('Result', { exact: true }).fill('Connection stayed stable and follow-up is complete.');
   await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
-  await expect(actions.getByText('Follow-Up Required', { exact: true })).toBeVisible();
+  await expect(newAction.getByText('Follow-Up Required', { exact: true })).toBeVisible();
   await expect(newAction).toContainText('Connection stayed stable and follow-up is complete.');
   await expect(newAction).toContainText('Follow-Up Completed');
   await saveActionsScreenshot(page, testInfo.project.name, 'staff-create-edit-multiple-actions');
