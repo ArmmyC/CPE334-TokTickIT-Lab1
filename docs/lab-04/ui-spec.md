@@ -1,6 +1,6 @@
 # Lab 4 UI Specification
 
-**Status:** Approved by the student. Implementation may begin after PR #71 comments are resolved and the reviewer merges it to `lab4-staging`.
+**Status:** Approved by the student. Implement the contract through the approved Issue sequence and reviewed PRs to `lab4-staging`.
 **Visual baseline:** Reuse the Lab 2–3 Zen Green system and shared AuthenticatedShell.
 
 ## 1. Design Tokens and Shared Rules
@@ -151,13 +151,24 @@ Capture genuine application screens only after implementation. Store them at the
 - `artifacts/lab-04/screenshots/requester-dashboard/`
 - `artifacts/lab-04/screenshots/actions-taken/`
 
-Planned evidence, with captions identifying role, viewport, and what each image proves:
+Evidence status, with each image tied to a role, viewport, and observable state:
 
-| Directory | Required views |
+| Directory | Status | Required or captured views |
+| --- | --- | --- |
+| `staff-dashboard/` | Planned | Desktop, tablet, and mobile, including current-user Actions Taken, non-zero and zero counts, recent/urgent Ticket drill-down, and safe loading/failure behavior |
+| `requester-dashboard/` | Planned | Desktop, tablet, and mobile, including owned-only metrics, recent/resolved items, empty state, and drill-down |
+| `actions-taken/` | Captured for Issue #67, 12 genuine images | Four states at desktop, tablet, and mobile: Staff follow-up validation, Staff create/edit with multiple actions, Staff safe forbidden response, and Requester read-only view |
+
+The Actions Taken images use these viewport sizes: desktop 1440×900, tablet 834×1112, and mobile 390×844. Each filename begins with its viewport (`desktop-`, `tablet-`, or `mobile-`) and ends with the state below:
+
+| Filename suffix | Role and what the image proves |
 | --- | --- |
-| Staff dashboard | Desktop, tablet, and mobile, include current-user Actions Taken, non-zero counts, zero-count state, recent/urgent Ticket drill-down, and safe loading/failure behavior |
-| Requester dashboard | Desktop, tablet, and mobile, show owned-only metrics, recent/resolved items, empty state, and drill-down |
-| Actions Taken | Staff create/edit view, multiple actions on one Ticket, follow-up validation, Requester read-only view, forbidden/safe error state, and responsive detail |
+| `staff-follow-up-validation.png` | Staff sees the required Follow-up Note error while the entered Action Taken values remain available for correction. |
+| `staff-create-edit-multiple-actions.png` | Staff can distinguish Ticket Owner from each action's performer, view multiple actions on one Ticket, and see follow-up completion separately from the original requirement. |
+| `staff-forbidden-safe-error.png` | Staff receives a safe forbidden response and the recoverable form retains its entered values. |
+| `requester-read-only.png` | The owning Requester can read Actions Taken without staff create/edit controls or editor-only metadata. |
+
+For example, `desktop-staff-follow-up-validation.png`, `tablet-staff-follow-up-validation.png`, and `mobile-staff-follow-up-validation.png` prove the same validation state at the three required viewport sizes. The equivalent three-file groups exist for the other suffixes.
 
 - [ ] All screenshots come from the running application, not mockups.
 - [ ] Images show the matching authenticated role and meaningful data.

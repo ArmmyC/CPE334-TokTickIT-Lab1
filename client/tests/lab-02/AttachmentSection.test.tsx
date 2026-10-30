@@ -26,6 +26,7 @@ const activeDetail = {
     itPriority: null,
     currentStatus: 'NEW',
     statusHistory: [],
+    actionsTaken: [],
     owner: null,
     attachments: [
       {

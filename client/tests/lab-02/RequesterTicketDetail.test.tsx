@@ -26,6 +26,7 @@ const detailResponse = {
     itPriority: null,
     currentStatus: 'NEW',
     statusHistory: [],
+    actionsTaken: [],
     owner: null,
     attachments: [
       {

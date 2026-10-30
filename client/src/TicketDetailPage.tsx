@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from './auth-context';
 import { apiErrorMessage, apiFetch, isApiErrorBody, readJson } from './api';
+import { ActionsTakenSection, isActionTaken, type ActionTaken } from './ActionsTakenSection';
 import { isTicketStatusHistoryItem, TicketStatusHistory, type TicketStatusHistoryItem } from './TicketStatusHistory';
 
 type TicketReference = {
@@ -48,6 +49,7 @@ type TicketDetail = {
   itPriority: string | null;
   currentStatus: string;
   statusHistory: TicketStatusHistoryItem[];
+  actionsTaken: ActionTaken[];
   owner: TicketOwner | null;
   attachments: Attachment[];
   publicComments: PublicComment[];
@@ -150,6 +152,8 @@ function isTicketDetailResponse(value: unknown): value is TicketDetailResponse {
     typeof ticket.currentStatus === 'string' &&
     Array.isArray(ticket.statusHistory) &&
     ticket.statusHistory.every(isTicketStatusHistoryItem) &&
+    Array.isArray(ticket.actionsTaken) &&
+    ticket.actionsTaken.every(isActionTaken) &&
     (ticket.owner === null || isOwner(ticket.owner)) &&
     Array.isArray(ticket.attachments) &&
     ticket.attachments.every(isAttachment) &&
@@ -748,6 +752,12 @@ export function TicketDetailPage() {
               <div className="ticket-detail-field ticket-detail-field-wide"><dt>Description</dt><dd className="ticket-detail-description">{detail.ticket.description}</dd></div>
             </dl>
           </section>
+
+          <ActionsTakenSection
+            actionsTaken={detail.ticket.actionsTaken}
+            ticketId={detail.ticket.id}
+            ticketStatus={detail.ticket.currentStatus}
+          />
 
           <TicketStatusHistory
             entries={detail.ticket.statusHistory}
