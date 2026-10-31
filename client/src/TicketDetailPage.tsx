@@ -527,6 +527,9 @@ function PublicCommentsSection({
   const [resolutionError, setResolutionError] = useState<string | null>(null);
   const [resolutionSuccess, setResolutionSuccess] = useState<string | null>(null);
   const [recordingResolution, setRecordingResolution] = useState(false);
+  const resolutionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const resolutionDialogRef = useRef<HTMLDivElement | null>(null);
+  const resolutionHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const postComment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -588,6 +591,63 @@ function PublicCommentsSection({
     }
   };
 
+  useEffect(() => {
+    if (!resolutionConfirmation) return undefined;
+    resolutionDialogRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    return () => {
+      window.setTimeout(() => {
+        if (resolutionTriggerRef.current?.isConnected) {
+          resolutionTriggerRef.current.focus();
+        } else {
+          resolutionHeadingRef.current?.focus();
+        }
+      }, 0);
+    };
+  }, [resolutionConfirmation]);
+
+  useEffect(() => {
+    if (!resolutionConfirmation) return undefined;
+    const dialog = resolutionDialogRef.current;
+    if (!dialog) return undefined;
+
+    const getFocusableElements = () => Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!recordingResolution) setResolutionConfirmation(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+      if (activeElement === dialog) {
+        event.preventDefault();
+        (event.shiftKey ? lastElement : firstElement).focus();
+      } else if (event.shiftKey && (activeElement === firstElement || !dialog.contains(activeElement))) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && (activeElement === lastElement || !dialog.contains(activeElement))) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [recordingResolution, resolutionConfirmation]);
+
   return (
     <section className="ticket-detail-card communication-card public-comments-card" aria-labelledby="public-comments-title">
       <h2 id="public-comments-title">Public Comments</h2>
@@ -632,7 +692,7 @@ function PublicCommentsSection({
       </form>
 
       <div className="requester-resolution-action">
-        <h3>Problem Appears Resolved</h3>
+        <h3 ref={resolutionHeadingRef} tabIndex={-1}>Problem Appears Resolved</h3>
         {requesterResolution ? (
           <p role="status">
             Problem Appears Resolved indication recorded on {formatDate(requesterResolution.resolvedAt)}. This does not change the formal Ticket status.
@@ -640,7 +700,7 @@ function PublicCommentsSection({
         ) : (
           <>
             <p className="communication-help">This records your indication separately from the formal Ticket status.</p>
-            <button type="button" className="btn btn-secondary" onClick={() => { setResolutionConfirmation(true); setResolutionError(null); }} disabled={recordingResolution}>
+            <button ref={resolutionTriggerRef} type="button" className="btn btn-secondary" onClick={() => { setResolutionConfirmation(true); setResolutionError(null); }} disabled={recordingResolution}>
               Problem Appears Resolved
             </button>
           </>
@@ -651,9 +711,9 @@ function PublicCommentsSection({
 
       {resolutionConfirmation && (
         <div className="ticket-confirmation-backdrop">
-          <div className="ticket-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="requester-resolution-confirmation-title">
+          <div ref={resolutionDialogRef} className="ticket-confirmation-dialog" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="requester-resolution-confirmation-title" aria-describedby="requester-resolution-confirmation-description">
             <h2 id="requester-resolution-confirmation-title">Confirm resolution indication</h2>
-            <p>This records that the problem appears resolved. It does not change the formal Ticket status.</p>
+            <p id="requester-resolution-confirmation-description">This records that the problem appears resolved. It does not change the formal Ticket status.</p>
             <div className="action-row">
               <button type="button" className="btn btn-secondary" onClick={() => setResolutionConfirmation(false)} disabled={recordingResolution}>Cancel</button>
               <button type="button" className="btn btn-primary" onClick={() => void recordResolution()} disabled={recordingResolution}>
@@ -713,9 +773,9 @@ export function TicketDetailPage() {
     <section className="ticket-detail-page" aria-labelledby="ticket-detail-title">
       <div className="page-heading-row ticket-detail-heading">
         <div>
-          <p className="eyebrow">TokTickIT / Lab 3</p>
+          <p className="eyebrow">TokTickIT / Lab 4</p>
           <h1 id="ticket-detail-title">Ticket Detail</h1>
-          <p className="text-secondary mb-0">Read-only Ticket information, attachments, and Public Comments.</p>
+          <p className="text-secondary mb-0">View your Ticket, Actions Taken, attachments, and Public Comments.</p>
         </div>
         <Link className="btn btn-secondary" to="/tickets">Back to My Tickets</Link>
       </div>

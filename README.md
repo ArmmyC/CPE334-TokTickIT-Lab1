@@ -27,11 +27,11 @@ TokTickIT is the CPE334 IT service-desk MVP. Lab 3 replaces the temporary Develo
 
        npm run db:up
 
-5. Apply the migrations, generate the Prisma client, and repair migrated credentials:
+5. Apply all deployed migrations, generate the Prisma client, and repair migrated Lab 3 credentials:
 
-       npm run prisma:migrate:lab3 --workspace server
+       npm run prisma:deploy --workspace server
 
-6. Seed the Lab 3 reference data, local users, Tickets, comments, and notes:
+6. Seed the Lab 3 and Lab 4 reference data, local users, Tickets, Actions Taken, comments, and notes:
 
        npm run db:seed
 
@@ -41,7 +41,7 @@ TokTickIT is the CPE334 IT service-desk MVP. Lab 3 replaces the temporary Develo
 
 The Vite frontend runs at http://localhost:5183 and the Express server runs at http://localhost:4000.
 
-The root page retains the Lab 1 `Check System` button. Clicking it calls `GET /api/health` and the protected category endpoint, then shows the backend status and seeded category IDs and names. The authenticated Lab 3 UI is available after setup and uses the seeded Users and role permissions described below.
+The root page retains the Lab 1 `Check System` button. Clicking it calls `GET /api/health` and the protected category endpoint, then shows the backend status and seeded category IDs and names. The authenticated application is available after setup and uses the seeded Users and role permissions described below.
 
 ## Tests and build
 
@@ -50,23 +50,25 @@ For the database-backed Lab 3 migration regression, first copy `.env.test.exampl
     npm run db:test:up
     npm run test:db:prepare
 
-Run the configured unit and API test commands:
+With the guarded test database prepared above, run the complete server suite serially to avoid contention among database-backed tests, then run the client suite and build both workspaces:
 
-    npm test
+    npm test --workspace server -- --maxWorkers=1 --minWorkers=1
+    npm test --workspace client
+    npm run build
 
 Run the Lab 3 migration-preservation regression against an isolated schema in the dedicated test database:
 
     npm run test:lab3:migration
 
-Build both workspaces:
-
-    npm run build
-
-Prepare the isolated Lab 3 test database and run the Playwright flows:
+Run the Lab 2–4 Playwright flows against the guarded test database:
 
     npm run test:e2e
 
 The E2E script starts the test service on PostgreSQL host port 5434, validates that `DATABASE_URL` points to the `toktickit_test` database, resets and seeds it, then starts the API and client. The preparation guard rejects missing, malformed, development, or differently named database URLs before running reset, migration, or seed commands. Never commit `.env.test`.
+
+Run the Lab 4 dashboard performance smoke separately:
+
+    npm test --workspace server -- --reporter=dot tests/lab-04/dashboard-performance-smoke.test.ts
 
 ## Lab 3 local credentials
 
@@ -120,6 +122,19 @@ The repeatable seed preserves the four Lab 1 Categories and seven Lab 2 Related 
 Lab 3 uses `main` as the stable branch and `lab3-staging` as the integration branch. Each Issue is implemented on its required branch, reviewed by Bank848, and merged by Bank848 into `lab3-staging`. The documentation increment uses `docs/lab3-delivery`, followed by the required release branch `release/lab3-to-main` from `lab3-staging` to `main`. Do not push directly to `lab3-staging` or `main`.
 
 The Lab 3 verification matrix is discovered by `playwright.config.ts` from `e2e/lab-02/` and `e2e/lab-03/`. The current matrix contains the retained Lab 2 Requester regression flow plus the Lab 3 authentication, Requester, Staff, and Administrator flows. Real screenshot evidence is stored only under the four required `artifacts/lab-03/screenshots/` directories. The Answer Sheet and final PDF are external submission artifacts and stay outside Git.
+
+## Lab 4 local setup and demonstration
+
+The Lab 4 migration extends the existing database without resetting earlier-lab data. Start PostgreSQL, apply every deployed migration, generate the Prisma client, and seed the repeatable Lab 3 and Lab 4 fixtures:
+
+    npm run db:up
+    npm run prisma:deploy --workspace server
+    npm run db:seed
+    npm run dev
+
+Use the local role accounts listed above. Requesters can open Dashboard and My Tickets, then view Actions Taken on an owned Ticket. IT Staff can use Dashboard and Ticket Queue, create multiple Actions Taken on one Ticket, edit a record, complete a required follow-up without clearing its required flag, and use only the permitted Ticket status transitions. Administrators can use the shared read-only Staff dashboard and queue drill-downs, and retain User Management. The server remains authoritative for ownership, role checks, resolution prerequisites, and stale-write conflicts.
+
+Lab 4 screenshots are kept in `artifacts/lab-04/screenshots/staff-dashboard/`, `requester-dashboard/`, and `actions-taken/`. They are genuine application captures at desktop `1440 x 900`, tablet `834 x 1112`, and mobile `390 x 844`.
 
 ## Lab 1 Git workflow
 

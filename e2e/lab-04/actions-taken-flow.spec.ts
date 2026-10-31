@@ -143,6 +143,47 @@ test('Requester sees their Actions Taken read-only, without staff editor metadat
   await assertNoHorizontalOverflow(page, 'Requester Actions Taken detail');
 });
 
+test('Staff can create an Action Taken with keyboard navigation', async ({ page }, testInfo) => {
+  await signInWithSeededAccount(page, SEEDED_ACCOUNTS.staff);
+  await openSeededTicket(page, 'TKT-2026-000002');
+
+  const actions = page.getByRole('region', { name: 'Actions Taken', exact: true });
+  const addButton = actions.getByRole('button', { name: 'Add Action Taken', exact: true });
+  for (let tabCount = 0; tabCount < 30; tabCount += 1) {
+    if (await addButton.evaluate((button) => button === document.activeElement)) break;
+    await page.keyboard.press('Tab');
+  }
+  await expect(addButton).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  const actionAt = page.getByLabel('Action Date/Time', { exact: true });
+  const descriptionField = page.getByLabel('Action Description', { exact: true });
+  const resultField = page.getByLabel('Result', { exact: true });
+  const followUpField = page.getByLabel('Follow-Up Required', { exact: true });
+  const description = `Keyboard action ${testInfo.project.name} ${Date.now()}`;
+  await expect(actionAt).toBeFocused();
+  for (let tabCount = 0; tabCount < 8; tabCount += 1) {
+    if (await descriptionField.evaluate((field) => field === document.activeElement)) break;
+    await page.keyboard.press('Tab');
+  }
+  await expect(descriptionField).toBeFocused();
+  await page.keyboard.type(description);
+  await page.keyboard.press('Tab');
+  await expect(resultField).toBeFocused();
+  await page.keyboard.type('Saved through keyboard navigation.');
+  await page.keyboard.press('Tab');
+  await expect(followUpField).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+
+  const saveButton = actions.getByRole('button', { name: 'Save Action Taken', exact: true });
+  await expect(saveButton).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(actions.getByText(description, { exact: true })).toBeVisible();
+  await expect(addButton).toBeFocused();
+  await assertNoHorizontalOverflow(page, `Keyboard Actions Taken at ${testInfo.project.name}`);
+});
+
 test('Action Taken safe failure keeps entries and exposes no internal details', async ({ page }, testInfo) => {
   await signInWithSeededAccount(page, SEEDED_ACCOUNTS.staff);
   const ticketId = await openSeededTicket(page, 'TKT-2026-000001');

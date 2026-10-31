@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { apiErrorMessage, apiFetch, isApiErrorBody, readJson } from './api';
 
 export type ActionTakenActor = {
@@ -153,6 +153,24 @@ export function ActionsTakenSection({
   const [isSaving, setIsSaving] = useState(false);
   const savingRef = useRef(false);
   const createIdempotencyKeyRef = useRef<string | null>(null);
+  const actionAtInputRef = useRef<HTMLInputElement | null>(null);
+  const addButtonRef = useRef<HTMLButtonElement | null>(null);
+  const editButtonRefs = useRef(new Map<number, HTMLButtonElement>());
+  const actionIdToRestoreFocusRef = useRef<number | null>(null);
+  const shouldRestoreFocusRef = useRef(false);
+  const isFormOpen = isCreating || editingActionId !== null;
+  useEffect(() => {
+    if (isFormOpen) {
+      actionAtInputRef.current?.focus();
+      return;
+    }
+    if (!shouldRestoreFocusRef.current) return;
+    shouldRestoreFocusRef.current = false;
+    const actionId = actionIdToRestoreFocusRef.current;
+    actionIdToRestoreFocusRef.current = null;
+    if (actionId === null) addButtonRef.current?.focus();
+    else editButtonRefs.current.get(actionId)?.focus();
+  }, [isFormOpen]);
   const clearFieldError = (field: string) => {
     setFieldErrors((current) => {
       if (!(field in current)) return current;
@@ -165,6 +183,8 @@ export function ActionsTakenSection({
 
   const startCreate = () => {
     if (!canWrite || isSaving) return;
+    shouldRestoreFocusRef.current = false;
+    actionIdToRestoreFocusRef.current = null;
     createIdempotencyKeyRef.current = globalThis.crypto.randomUUID();
     setForm(createEmptyForm());
     setFieldErrors({});
@@ -177,6 +197,8 @@ export function ActionsTakenSection({
 
   const startEdit = (action: ActionTaken) => {
     if (!canWrite || isSaving) return;
+    shouldRestoreFocusRef.current = false;
+    actionIdToRestoreFocusRef.current = action.id;
     createIdempotencyKeyRef.current = null;
     setForm({
       actionAt: toLocalDateTimeValue(new Date(action.actionAt)),
@@ -197,6 +219,7 @@ export function ActionsTakenSection({
 
   const cancelCreate = () => {
     if (isSaving) return;
+    shouldRestoreFocusRef.current = true;
     createIdempotencyKeyRef.current = null;
     setIsCreating(false);
     setEditingActionId(null);
@@ -288,6 +311,7 @@ export function ActionsTakenSection({
         return;
       }
       if (!isUpdate) createIdempotencyKeyRef.current = null;
+      shouldRestoreFocusRef.current = true;
       setIsCreating(false);
       setEditingActionId(null);
       setFormSuccess('Action Taken saved. Ticket details are refreshing.');
@@ -300,7 +324,6 @@ export function ActionsTakenSection({
     }
   };
 
-  const isFormOpen = isCreating || editingActionId !== null;
   const actionBeingEdited = editingActionId === null
     ? undefined
     : actionsTaken.find((action) => action.id === editingActionId);
@@ -310,7 +333,7 @@ export function ActionsTakenSection({
       <div className="actions-taken-heading">
         <h2 id="actions-taken-title">Actions Taken</h2>
         {canWrite && !isFormOpen && (
-          <button type="button" className="btn btn-primary" onClick={startCreate} disabled={isSaving}>
+          <button ref={addButtonRef} type="button" className="btn btn-primary" onClick={startCreate} disabled={isSaving}>
             Add Action Taken
           </button>
         )}
@@ -333,6 +356,10 @@ export function ActionsTakenSection({
                       type="button"
                       className="btn btn-secondary"
                       onClick={() => startEdit(action)}
+                      ref={(button) => {
+                        if (button) editButtonRefs.current.set(action.id, button);
+                        else editButtonRefs.current.delete(action.id);
+                      }}
                       aria-label={`Edit Action Taken ${action.id}`}
                     >Edit</button>
                   )}
@@ -377,6 +404,7 @@ export function ActionsTakenSection({
             <div className="ticket-field">
               <RequiredFieldLabel htmlFor="action-taken-action-at">Action Date/Time</RequiredFieldLabel>
               <input
+                ref={actionAtInputRef}
                 id="action-taken-action-at"
                 type="datetime-local"
                 required

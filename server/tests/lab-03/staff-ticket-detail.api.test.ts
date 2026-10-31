@@ -384,6 +384,40 @@ describe('Lab 3 Staff Ticket Detail API', () => {
     expect(harness.ticketUpdate).not.toHaveBeenCalled();
   });
 
+  it('rejects an inactive IT Staff owner and preserves the current Owner', async () => {
+    const harness = await createOperationalHarness();
+    const activeStaff = harness.users.get(3);
+    if (!activeStaff) throw new Error('Expected the active Staff fixture.');
+    harness.users.set(4, {
+      ...activeStaff,
+      id: 4,
+      name: 'Inactive Staff',
+      email: 'inactive-staff@example.test',
+      isActive: false,
+    });
+    const currentOwner = {
+      id: 3,
+      name: 'Somsak Staff',
+      email: 'somsak@example.test',
+      role: 'IT_STAFF' as const,
+    };
+    harness.ticket.owner = currentOwner;
+    const staff = await harness.login(harness.app, 'somsak@example.test');
+
+    const response = await staff.agent
+      .patch('/api/staff/tickets/12/owner')
+      .set('X-CSRF-Token', staff.csrfToken)
+      .send({ ownerId: 4 });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: 'The selected Ticket owner is not eligible.',
+      code: 'OWNER_NOT_ELIGIBLE',
+    });
+    expect(harness.ticket.owner).toEqual(currentOwner);
+    expect(harness.ticketUpdate).not.toHaveBeenCalled();
+  });
+
   it('returns a transition conflict with allowed statuses and leaves the Ticket unchanged', async () => {
     const harness = await createOperationalHarness();
     const staff = await harness.login(harness.app, 'somsak@example.test');
