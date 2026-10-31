@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   assertNoHorizontalOverflow,
@@ -31,9 +33,18 @@ async function openSeededTicket(page: Page, ticketNumber: string): Promise<{ tic
   return { ticketId, requesterPath: `/tickets/${ticketId}` };
 }
 
-test('IT Staff can resolve and close after required follow-up completion, then reopen with stable history', async ({ page }) => {
+async function saveStatusHistoryScreenshot(page: Page, projectName: string, role: 'staff' | 'requester'): Promise<void> {
+  const directory = path.resolve('artifacts/lab-04/screenshots/actions-taken');
+  await mkdir(directory, { recursive: true });
+  await page.screenshot({
+    path: path.join(directory, `${projectName}-${role}-status-history.png`),
+    fullPage: true,
+  });
+}
+
+test('IT Staff and the owning Requester see ordered history after resolve, close, and reopen', async ({ page }, testInfo) => {
   await signInWithSeededAccount(page, SEEDED_ACCOUNTS.staff);
-  const { ticketId } = await openSeededTicket(page, 'TKT-2026-000004');
+  const { ticketId, requesterPath } = await openSeededTicket(page, 'TKT-2026-000004');
 
   await page.getByLabel('Next Status', { exact: true }).selectOption('RESOLVED');
   await page.getByRole('button', { name: 'Update Status', exact: true }).click();
@@ -54,6 +65,16 @@ test('IT Staff can resolve and close after required follow-up completion, then r
   await expect(page.getByRole('status').filter({ hasText: 'Ticket status updated.' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Status history' })).toContainText('CLOSED → REOPENED');
 
+  const staffHistory = page.getByRole('list', { name: 'Status history' });
+  const staffHistoryText = (await staffHistory.allTextContents()).join('\n');
+  const resolvedIndex = staffHistoryText.indexOf('WAITING_FOR_REQUESTER → RESOLVED');
+  const closedIndex = staffHistoryText.indexOf('RESOLVED → CLOSED');
+  const reopenedIndex = staffHistoryText.indexOf('CLOSED → REOPENED');
+  expect(resolvedIndex).toBeGreaterThanOrEqual(0);
+  expect(closedIndex).toBeGreaterThan(resolvedIndex);
+  expect(reopenedIndex).toBeGreaterThan(closedIndex);
+  await saveStatusHistoryScreenshot(page, testInfo.project.name, 'staff');
+
   const detailResponse = await page.request.get(`/api/staff/tickets/${ticketId}`);
   expect(detailResponse.ok()).toBe(true);
   const body = await detailResponse.json() as {
@@ -61,6 +82,27 @@ test('IT Staff can resolve and close after required follow-up completion, then r
   };
   expect(body.ticket.actionsTaken.some((action) => action.followUpRequired && action.followUpCompleted)).toBe(true);
   await assertNoHorizontalOverflow(page, 'Ticket workflow resolve, close, and reopen');
+
+  await page.getByRole('button', { name: 'Log out', exact: true }).click();
+  await signInWithSeededAccount(page, {
+    name: 'Kittipong Saelim',
+    email: 'kittipong@example.test',
+    initialPassword: 'TokTickIT-Lab3!User-4-Aa',
+    establishedPassword: 'E2E-Requester-Password-4!',
+  });
+  await page.goto(requesterPath);
+  await expect(page.getByRole('heading', { name: 'Ticket Detail', exact: true })).toBeVisible();
+  await expect(page.getByText('TKT-2026-000004', { exact: true })).toBeVisible();
+  const requesterHistory = page.getByRole('list', { name: 'Status history' });
+  await expect(requesterHistory).toContainText('WAITING_FOR_REQUESTER → RESOLVED');
+  await expect(requesterHistory).toContainText('RESOLVED → CLOSED');
+  await expect(requesterHistory).toContainText('CLOSED → REOPENED');
+  const requesterHistoryText = (await requesterHistory.allTextContents()).join('\n');
+  expect(requesterHistoryText.indexOf('WAITING_FOR_REQUESTER → RESOLVED')).toBeLessThan(requesterHistoryText.indexOf('RESOLVED → CLOSED'));
+  expect(requesterHistoryText.indexOf('RESOLVED → CLOSED')).toBeLessThan(requesterHistoryText.indexOf('CLOSED → REOPENED'));
+  await expect(page.getByLabel('Next Status', { exact: true })).toHaveCount(0);
+  await assertNoHorizontalOverflow(page, 'Requester populated status history');
+  await saveStatusHistoryScreenshot(page, testInfo.project.name, 'requester');
 });
 
 test('IT Staff receives a resolution gate explanation for an incomplete required follow-up', async ({ page }) => {
