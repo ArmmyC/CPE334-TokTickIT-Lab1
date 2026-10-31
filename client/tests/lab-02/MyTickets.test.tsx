@@ -97,6 +97,7 @@ describe('Lab 2 My Tickets screen', () => {
     vi.stubGlobal('fetch', fetchMock);
     await renderMyTickets();
     expect(screen.getByRole('status')).toHaveTextContent(/Loading Tickets/i);
+    await waitFor(() => expect(resolveTickets).toBeDefined());
     resolveTickets?.({ ok: true, json: async () => listResponse() });
     expect((await screen.findAllByText('TKT-2026-000042')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Laptop battery drains quickly').length).toBeGreaterThan(0);

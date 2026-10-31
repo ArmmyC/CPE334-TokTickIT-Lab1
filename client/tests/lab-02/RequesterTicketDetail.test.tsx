@@ -239,4 +239,48 @@ describe('Lab 2 Ticket Detail screen', () => {
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
     expect(trigger).toHaveFocus();
   });
+
+  it('keeps keyboard focus in the resolution dialog while its request is pending', async () => {
+    let finishResolution: ((response: {
+      ok: boolean;
+      status: number;
+      json: () => Promise<unknown>;
+    }) => void) | undefined;
+    const fetchMock = stubDetailApi();
+    const originalFetch = fetchMock.getMockImplementation();
+    if (!originalFetch) throw new Error('Expected the Ticket Detail fetch stub.');
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === '/api/tickets/42/requester-resolution' && init?.method === 'POST') {
+        return new Promise((resolve) => { finishResolution = resolve; });
+      }
+      return originalFetch(input, init);
+    });
+
+    await renderDetail();
+    expect(await screen.findByText('TKT-2026-000042')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Problem Appears Resolved' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm resolution indication' });
+    const confirmButton = screen.getByRole('button', { name: 'Confirm Problem Appears Resolved' });
+    fireEvent.click(confirmButton);
+    await waitFor(() => expect(confirmButton).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(dialog).toHaveFocus();
+
+    finishResolution?.({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        requesterResolution: {
+          resolvedAt: '2026-08-21T11:35:00.000Z',
+          resolvedBy: { id: 1, name: 'Ariya Anderson', role: 'REQUESTER' },
+        },
+      }),
+    });
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  });
 });

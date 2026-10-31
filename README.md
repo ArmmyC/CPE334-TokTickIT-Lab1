@@ -27,11 +27,11 @@ TokTickIT is the CPE334 IT service-desk MVP. Lab 3 replaces the temporary Develo
 
        npm run db:up
 
-5. Apply the migrations, generate the Prisma client, and repair migrated credentials:
+5. Apply all deployed migrations, generate the Prisma client, and repair migrated Lab 3 credentials:
 
-       npm run prisma:migrate:lab3 --workspace server
+       npm run prisma:deploy --workspace server
 
-6. Seed the Lab 3 reference data, local users, Tickets, comments, and notes:
+6. Seed the Lab 3 and Lab 4 reference data, local users, Tickets, Actions Taken, comments, and notes:
 
        npm run db:seed
 

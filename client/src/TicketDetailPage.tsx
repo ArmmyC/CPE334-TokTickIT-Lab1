@@ -624,7 +624,11 @@ function PublicCommentsSection({
       if (event.key !== 'Tab') return;
 
       const focusableElements = getFocusableElements();
-      if (focusableElements.length === 0) return;
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
       const firstElement = focusableElements[0];
       const lastElement = focusableElements[focusableElements.length - 1];
       const activeElement = document.activeElement;
@@ -704,7 +708,7 @@ function PublicCommentsSection({
 
       {resolutionConfirmation && (
         <div className="ticket-confirmation-backdrop">
-          <div ref={resolutionDialogRef} className="ticket-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="requester-resolution-confirmation-title" aria-describedby="requester-resolution-confirmation-description">
+          <div ref={resolutionDialogRef} className="ticket-confirmation-dialog" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="requester-resolution-confirmation-title" aria-describedby="requester-resolution-confirmation-description">
             <h2 id="requester-resolution-confirmation-title">Confirm resolution indication</h2>
             <p id="requester-resolution-confirmation-description">This records that the problem appears resolved. It does not change the formal Ticket status.</p>
             <div className="action-row">
