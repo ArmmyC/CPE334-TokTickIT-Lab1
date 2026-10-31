@@ -632,7 +632,10 @@ function PublicCommentsSection({
       const firstElement = focusableElements[0];
       const lastElement = focusableElements[focusableElements.length - 1];
       const activeElement = document.activeElement;
-      if (event.shiftKey && (activeElement === firstElement || !dialog.contains(activeElement))) {
+      if (activeElement === dialog) {
+        event.preventDefault();
+        (event.shiftKey ? lastElement : firstElement).focus();
+      } else if (event.shiftKey && (activeElement === firstElement || !dialog.contains(activeElement))) {
         event.preventDefault();
         lastElement.focus();
       } else if (!event.shiftKey && (activeElement === lastElement || !dialog.contains(activeElement))) {

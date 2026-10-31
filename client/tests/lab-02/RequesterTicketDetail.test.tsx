@@ -240,7 +240,7 @@ describe('Lab 2 Ticket Detail screen', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('keeps keyboard focus in the resolution dialog while its request is pending', async () => {
+  it('keeps keyboard focus trapped while the resolution request is pending and after failure', async () => {
     let finishResolution: ((response: {
       ok: boolean;
       status: number;
@@ -258,13 +258,15 @@ describe('Lab 2 Ticket Detail screen', () => {
 
     await renderDetail();
     expect(await screen.findByText('TKT-2026-000042')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Problem Appears Resolved' }));
+    const trigger = screen.getByRole('button', { name: 'Problem Appears Resolved' });
+    fireEvent.click(trigger);
 
     const dialog = await screen.findByRole('dialog', { name: 'Confirm resolution indication' });
+    const cancelButton = screen.getByRole('button', { name: 'Cancel' });
     const confirmButton = screen.getByRole('button', { name: 'Confirm Problem Appears Resolved' });
     fireEvent.click(confirmButton);
     await waitFor(() => expect(confirmButton).toBeDisabled());
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(cancelButton).toBeDisabled();
 
     fireEvent.keyDown(document, { key: 'Tab' });
     expect(dialog).toHaveFocus();
@@ -272,15 +274,36 @@ describe('Lab 2 Ticket Detail screen', () => {
     expect(dialog).toHaveFocus();
 
     finishResolution?.({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        requesterResolution: {
-          resolvedAt: '2026-08-21T11:35:00.000Z',
-          resolvedBy: { id: 1, name: 'Ariya Anderson', role: 'REQUESTER' },
-        },
-      }),
+      ok: false,
+      status: 503,
+      json: async () => ({ error: 'The resolution service is unavailable.' }),
     });
+    expect(await screen.findByRole('alert')).toHaveTextContent('The resolution service is unavailable.');
+    await waitFor(() => expect(confirmButton).toBeEnabled());
+    expect(cancelButton).toBeEnabled();
+    expect(dialog).toHaveFocus();
+
+    const shiftTabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(shiftTabEvent);
+    expect(shiftTabEvent.defaultPrevented).toBe(true);
+    expect(confirmButton).toHaveFocus();
+
+    const tabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(tabEvent);
+    expect(tabEvent.defaultPrevented).toBe(true);
+    expect(cancelButton).toHaveFocus();
+
+    fireEvent.click(cancelButton);
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 });
