@@ -1,6 +1,6 @@
 # Lab 4 Engineering Specification
 
-**Status:** Approved by the student. Implement the contract through the approved Issue sequence and reviewed PRs to `lab4-staging`.
+**Status:** Approved by the student on 2026-10-30, including the Administrator read-only Staff Queue drill-down clarification. Implement through the approved Issue sequence and reviewed PRs to `lab4-staging`.
 **Staging branch:** `lab4-staging`
 **Release target:** `main`
 **Lab 3 baseline:** PR #63, the Lab 3 screenshot integration, merged to `lab3-staging`.
@@ -59,8 +59,8 @@ Dashboards summarize the current operational data and link to the detailed Ticke
 
 - **FR-10:** Requester and Staff dashboards shall be backed by dedicated API responses containing concise metrics and limited recent Ticket rows, not entire Ticket collections.
 - **FR-11:** All counts, date boundaries, status groupings, and activity timestamps shall be calculated by the backend using the rules in BR-11 through BR-14.
-- **FR-12:** Each metric and recent row shall lead to a useful detailed list or Ticket Detail view. The UI shall not calculate authoritative counts from a partial client-side list.
-- **FR-13:** The Requester dashboard shall be scoped to the authenticated Requester. The Staff dashboard shall use the authenticated staff identity for Owner-specific and Action-performer metrics, including a current-user Actions Taken count and recent action list.
+- **FR-12:** Each dashboard metric, status/priority breakdown count, and recent row shall lead to a useful filtered list or Ticket Detail view where practical. The UI shall not calculate authoritative counts from a partial client-side list.
+- **FR-13:** The Requester dashboard shall be scoped to the authenticated Requester. The Staff dashboard shall use the authenticated IT Staff or Administrator identity for Owner-specific and Action-performer metrics, including a current-user Actions Taken count and recent action list.
 
 ### Data, security, and hardening
 
@@ -72,6 +72,7 @@ Dashboards summarize the current operational data and link to the detailed Ticke
 - **FR-19:** Genuine screenshots shall be stored under the three exact paths in the Lab 4 sheet and included through reviewed PRs. The Answer Sheet and final PDF remain outside Git.
 - **FR-20:** Existing Ticket Owner assignment shall remain available to permitted IT Staff. Only active eligible IT Staff or Administrators can be assigned. The server shall reject inactive or ineligible assignees without changing the current Owner. Assignment remains separate from Action Taken Performed by.
 - **FR-21:** The backend shall reject Action Taken create/edit requests when a Ticket is Resolved, Closed, or Cancelled. Staff must reopen the Ticket before changing Actions Taken.
+- **FR-22:** Administrators shall be able to read and filter the Staff Ticket Queue for dashboard drill-downs. This read-only queue access does not change any existing per-endpoint mutation permissions.
 
 ## 5. Business Rules
 
@@ -80,7 +81,7 @@ Dashboards summarize the current operational data and link to the detailed Ticke
 - **BR-01:** Every protected endpoint requires a normal authenticated session. State-changing requests require the existing same-origin and CSRF protections.
 - **BR-02:** Requester access is restricted to Tickets whose `requesterId` equals the authenticated Requester. A client-supplied requester/user identifier never grants access.
 - **BR-03:** IT Staff and Administrators may create or update Actions Taken on Tickets they are permitted to access. Requesters may read all Action Taken fields on their own Tickets and cannot write them.
-- **BR-04:** Ticket status mutations remain IT Staff only, matching the Lab 3 contract. Administrators may use the Actions Taken APIs and Staff dashboard because the Lab 4 Actions Taken role section grants Staff behavior, but do not gain formal status mutation rights.
+- **BR-04:** Ticket status mutations remain IT Staff only, matching the Lab 3 contract. Administrators may use the Actions Taken APIs and shared Staff dashboard because the Lab 4 Actions Taken role section grants Staff behavior, and may read/filter the Staff Ticket Queue for dashboard drill-downs. Administrators do not gain formal status mutation or Ticket Owner assignment rights.
 - **BR-05:** `Ticket.ownerId` identifies the primary Ticket coordinator. Existing assignment accepts only an active IT Staff or Administrator and rejects an inactive/ineligible assignee without changing the Owner. `ActionTaken.performedById` identifies the authenticated staff member who recorded/performed the action at creation. Updating a row does not change its original performer. `updatedById` records the most recent editor.
 
 ### Actions Taken data and validation
@@ -129,6 +130,7 @@ The backend rejects all unlisted transitions. A Requester resolution indication 
 - **BR-24:** Seed operations use stable unique keys/upserts and can run repeatedly without duplicates or changing existing user passwords.
 - **BR-25:** Activity timestamps are updated in the same transaction as the event that caused them. Dashboard counts are database aggregates over indexed filters, not stored counters and not calculations over a full Ticket collection.
 - **BR-26:** Actions Taken may be created or edited only while the Ticket is in `NEW`, `OPEN`, `IN_PROGRESS`, `WAITING_FOR_REQUESTER`, or `REOPENED`. Requests on `RESOLVED`, `CLOSED`, or `CANCELLED` Tickets return `409 ACTION_TAKEN_LOCKED` without changing data. Reopen the Ticket before recording or correcting an action.
+- **BR-27:** Administrator access to the Staff Ticket Queue is read-only and limited to the documented list fields and filters used for dashboard drill-downs. Queue access does not grant Ticket Owner assignment, formal status mutation, Public Comment creation, Internal Note creation, or any other endpoint permission. Existing Administrator Actions Taken permissions remain as defined in FR-01 and BR-03.
 
 ## 6. UI Specification Summary
 

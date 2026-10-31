@@ -1,6 +1,6 @@
 # Lab 4 REST API Specification
 
-**Status:** Approved by the student. Implement the contract through the approved Issue sequence and reviewed PRs to `lab4-staging`.
+**Status:** Approved by the student on 2026-10-30, including the Administrator read-only Staff Queue drill-down clarification. Implement through the approved Issue sequence and reviewed PRs to `lab4-staging`.
 **Base path:** `/api`
 **Compatibility:** Preserve all approved Lab 2–3 routes and behavior.
 
@@ -19,6 +19,7 @@
 | --- | --- | --- | --- |
 | Requester dashboard | Own identity only | No | No |
 | Staff dashboard | No | Yes | Yes, shared Staff metrics |
+| Read/filter Staff Ticket Queue | No | Yes | Yes, read-only for dashboard drill-downs |
 | Read Ticket Detail and Actions Taken | Owned Tickets only | Accessible Tickets | Permitted protected Ticket Detail |
 | Create/update Actions Taken | No | Active accessible Tickets only | Active accessible Tickets only, as Lab 4 Section 4.3 permits |
 | Read Ticket status history | Owned Tickets only | Accessible Tickets | Permitted protected Ticket Detail |
@@ -281,10 +282,10 @@ Definitions:
 
 ### Dashboard drill-down filters
 
-Dashboard links use the existing detailed Ticket lists, extended by the following server-side query parameters:
+Dashboard links use the existing detailed Ticket lists, extended by the following server-side query parameters. `GET /api/staff/tickets` is available to IT Staff and Administrators. Administrator access is read-only and exists to support the shared dashboard drill-downs; it does not change authorization for any mutation endpoint. The queue returns only its documented list fields, and Administrator rows open `/admin/tickets/:ticketId` so the existing Administrator detail permissions remain in force.
 
 - Requester `GET /api/tickets`: `statusGroup=ACTIVE|RESOLVED`, optional `activitySince=<UTC ISO timestamp>` and `activityUntil=<UTC ISO timestamp>`, and optional `resolvedSince=<UTC ISO timestamp>` and `resolvedUntil=<UTC ISO timestamp>`.
-- Staff `GET /api/staff/tickets`: `statusGroup=ACTIVE`, optional `activitySince` and `activityUntil`, existing status/priority filters, `ownerId=ME` for the authenticated user or `UNASSIGNED`, and `actionPerformedBy=ME` to list Tickets with at least one action by the authenticated user. Existing numeric owner filters retain their permission checks. The `actionsTakenByMe` card uses `actionPerformedBy=ME` without `statusGroup` to include work on any Ticket status.
+- Staff/Administrator `GET /api/staff/tickets`: `statusGroup=ACTIVE`, optional `activitySince` and `activityUntil`, existing status/priority filters, `ownerId=ME` for the authenticated user or `UNASSIGNED`, and `actionPerformedBy=ME` to list Tickets with at least one action by the authenticated user. `ME` is resolved from the authenticated session for both roles. Existing numeric owner filters retain their permission checks. The `actionsTakenByMe` card uses `actionPerformedBy=ME` without `statusGroup` to include work on any Ticket status. Staff dashboard status breakdown links use `status=<active status>`; priority links use `statusGroup=ACTIVE&itPriority=<priority>`, including `UNASSIGNED`.
 - `statusGroup=ACTIVE` means `NEW`, `OPEN`, `IN_PROGRESS`, `WAITING_FOR_REQUESTER`, or `REOPENED`; `statusGroup=RESOLVED` means current `RESOLVED` or `CLOSED`. Requester `activitySince`/`activityUntil` filter `lastRequesterVisibleActivityAt`; Staff filters use `lastStaffActivityAt`. All provided time bounds are inclusive and the dashboard supplies the same `windowStart` and `asOf` used by its metric.
 - `resolvedSince`/`resolvedUntil` filter the latest real transition into `RESOLVED`, and return only Tickets currently `RESOLVED` or `CLOSED`. `ownerId=ME` is resolved from the session, and `actionPerformedBy=ME` matches immutable `performedById`, not Ticket Owner or latest editor.
 - A `statusGroup` cannot be combined with a single-status filter. Invalid or contradictory filters return `400 VALIDATION_FAILED`.

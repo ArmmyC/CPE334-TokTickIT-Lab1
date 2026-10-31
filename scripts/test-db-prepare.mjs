@@ -34,22 +34,43 @@ const npxCommand = process.platform === 'win32'
 const npxPrefix = process.platform === 'win32'
   ? [path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js')]
   : [];
-const resetArguments = ['prisma', 'migrate', 'reset', '--force', '--skip-seed'];
-if (process.env.TOKTICKIT_SKIP_PRISMA_GENERATE === '1') {
-  resetArguments.push('--skip-generate');
-}
+const truncateSql = `
+DO $$
+DECLARE
+  target_tables text;
+BEGIN
+  SELECT string_agg(format('%I.%I', schemaname, tablename), ', ')
+  INTO target_tables
+  FROM pg_tables
+  WHERE schemaname = 'public'
+    AND tablename <> '_prisma_migrations';
+
+  IF target_tables IS NOT NULL THEN
+    EXECUTE 'TRUNCATE TABLE ' || target_tables || ' RESTART IDENTITY CASCADE';
+  END IF;
+END
+$$;
+`;
 
 const commands = [
-  resetArguments,
-  ['prisma', 'migrate', 'deploy'],
-  ['tsx', 'prisma/seed.ts'],
+  { args: ['prisma', 'migrate', 'deploy'] },
+  ...(process.env.TOKTICKIT_SKIP_PRISMA_GENERATE === '1'
+    ? []
+    : [{ args: ['prisma', 'generate'] }]),
+  {
+    args: ['prisma', 'db', 'execute', '--schema', 'prisma/schema.prisma', '--stdin'],
+    input: truncateSql,
+  },
+  { args: ['tsx', 'prisma/seed.ts'] },
 ];
 
-for (const args of commands) {
+for (const { args, input } of commands) {
   const result = spawnSync(npxCommand, [...npxPrefix, ...args], {
     cwd: serverDirectory,
     env: childEnvironment,
-    stdio: 'inherit',
+    ...(input === undefined
+      ? { stdio: 'inherit' }
+      : { input, encoding: 'utf8', stdio: ['pipe', 'inherit', 'inherit'] }),
   });
   if (result.error) {
     console.error(`Unable to run ${npxCommand} ${[...npxPrefix, ...args].join(' ')}.`);
