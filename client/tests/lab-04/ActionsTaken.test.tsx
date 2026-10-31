@@ -214,6 +214,29 @@ describe('Lab 4 Actions Taken UI', () => {
     expect(screen.getByText('Ticket Owner').parentElement).toHaveTextContent('Somsak Staff');
   });
 
+  it('moves keyboard focus into a new Action Taken form', async () => {
+    stubStaffDetailApi();
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await screen.findByRole('heading', { name: 'Staff Ticket Detail' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Action Taken' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Action Date/Time')).toHaveFocus());
+  });
+
+  it('moves focus into edit mode and restores it to the Edit button on cancel', async () => {
+    stubStaffDetailApi();
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await screen.findByRole('heading', { name: 'Staff Ticket Detail' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Action Taken 31' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Action Date/Time')).toHaveFocus());
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit Action Taken 31' })).toHaveFocus());
+  });
+
   it('creates an action with server-owned identity and refreshes the Ticket detail', async () => {
     const fetchMock = stubStaffDetailApi();
     setPath('/staff/tickets/12');
@@ -312,9 +335,16 @@ describe('Lab 4 Actions Taken UI', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Follow-Up Required' }), {
       target: { value: 'yes' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Action Taken' }));
+    const submitButton = screen.getByRole('button', { name: 'Save Action Taken' });
+    submitButton.focus();
+    fireEvent.click(submitButton);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Follow-Up Note is required');
+    expect(submitButton).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'Follow-Up Note' })).toHaveAttribute(
+      'aria-describedby',
+      'action-taken-follow-up-note-error',
+    );
     expect(screen.getByRole('textbox', { name: 'Action Description' })).toHaveValue('Replaced the wireless card.');
     expect(screen.getByRole('textbox', { name: 'Result' })).toHaveValue('Connection is stable.');
     expect(fetchMock.mock.calls.some(([input, init]) => (

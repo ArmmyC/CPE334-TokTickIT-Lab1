@@ -134,17 +134,19 @@ Use the existing CSS breakpoints: tablet navigation/layout at 991px and mobile r
 
 ## 9. Accessibility
 
-- [ ] Use semantic landmarks, one page-level heading, ordered subsection headings, and real table headers when a table is used.
-- [ ] Every control has an associated visible label or accessible name. Required state and validation text are programmatically associated.
-- [ ] Keyboard focus remains visible with the specified outline. All create/edit/status flows work without a pointer.
-- [ ] Status and follow-up are conveyed by text as well as color.
-- [ ] Loading and save progress are announced. Dialogs, if used for confirmations, trap focus appropriately, close with Escape where safe, and restore focus to their trigger.
-- [ ] Preserve focus on a validation failure and move it to the error summary only when necessary.
-- [ ] Text content from Actions Taken and Ticket history is rendered as text, never injected HTML.
-- [ ] Follow-Up Required and Follow-Up Completed have separate visible labels so completion never looks like the original requirement was removed.
-- [ ] Record the manual audit date, tested role and viewport, and any findings in the Lab 4 Issue or PR evidence. This checklist is not an automated test result.
+- [x] Use semantic landmarks, one page-level heading, ordered subsection headings, and real table headers when a table is used.
+- [x] Every control has an associated visible label or accessible name. Required state and validation text are programmatically associated.
+- [x] Keyboard focus remains visible with the specified outline. All create/edit/status flows work without a pointer.
+- [x] Status and follow-up are conveyed by text as well as color.
+- [x] Loading and save progress are announced. Dialogs, if used for confirmations, trap focus appropriately, close with Escape where safe, and restore focus to their trigger.
+- [x] Preserve focus on a validation failure and move it to the error summary only when necessary.
+- [x] Text content from Actions Taken and Ticket history is rendered as text, never injected HTML.
+- [x] Follow-Up Required and Follow-Up Completed have separate visible labels so completion never looks like the original requirement was removed.
+- [x] Record the manual audit date, tested role and viewport, and any findings in the Lab 4 Issue or PR evidence. This checklist is not an automated test result.
 
-Issue #68 browser checkpoint, 2026-10-31: the Requester and IT Staff dashboard flows were exercised at desktop 1440×900, tablet 834×1112, and mobile 390×844. Direct navigation focuses the page heading. Keyboard Tab reaches metric cards in document order, and Staff status counts are keyboard-reachable with a visible gold focus outline; Enter opens their filtered views. Staff status and priority counts, including zero values, open their matching filtered Staff Queue views. These checks are automated in `e2e/lab-04/dashboards.spec.ts`; they do not complete the manual checklist above. A full manual accessibility audit remains open for final hardening.
+Issue #68 browser checkpoint, 2026-10-31: the Requester and IT Staff dashboard flows were exercised at desktop 1440×900, tablet 834×1112, and mobile 390×844. Direct navigation focuses the page heading. Keyboard Tab reaches metric cards in document order, and Staff status counts are keyboard-reachable with a visible gold focus outline; Enter opens their filtered views. Staff status and priority counts, including zero values, open their matching filtered Staff Queue views. These checks are automated in `e2e/lab-04/dashboards.spec.ts`.
+
+Issue #69 accessibility audit, 2026-10-31: I manually reviewed the UI source and all 18 genuine Lab 4 screenshots for Requester and IT Staff at desktop 1440×900, tablet 834×1112, and mobile 390×844. The pages use named navigation/main landmarks and a page-level heading; controls have visible labels or accessible names; Action Taken errors are associated with invalid fields and announced in an alert; loading and success states use status announcements; status and follow-up meanings remain explicit text; and user-entered Action Taken and history content is rendered as React text. Automated keyboard checks cover dashboard Tab/Enter navigation, the complete Action Taken create flow at all three viewports, inline form focus entry and return, validation focus preservation, and Staff/Requester confirmation dialog focus trap, Escape, and restoration. The shared `:focus-visible` outline and text contrast are covered by `client/tests/lab-04/VisualStyle.test.ts`. Chromium's native `datetime-local` control has multiple keyboard segments, so the Actions Taken browser test tabs through those segments before checking the next field. No screen-reader session was run; no unresolved issue was found in the audited checklist.
 
 ## 10. Screenshot Evidence and Visual Checklist
 
@@ -158,9 +160,9 @@ Evidence status, with each image tied to a role, viewport, and observable state:
 
 | Directory | Status | Required or captured views |
 | --- | --- | --- |
-| `staff-dashboard/` | Captured for Issue #68, 3 genuine images | `desktop-summary.png`, `tablet-summary.png`, and `mobile-summary.png` show Staff identity, current-user Actions Taken, recent Tickets, active status and priority counts with actionable zero-valued rows, and responsive card layout. API/component/E2E tests verify query agreement, safe loading/failure, and filtered drill-down behavior. |
-| `requester-dashboard/` | Captured for Issue #68, 3 genuine images | `desktop-summary.png`, `tablet-summary.png`, and `mobile-summary.png` show Requester identity, owned Ticket metrics, recent Tickets, and the empty recently resolved state. API/component/E2E tests verify ownership isolation and filtered drill-down behavior. |
-| `actions-taken/` | Captured for Issue #67, 12 genuine images | Four states at desktop, tablet, and mobile: Staff follow-up validation, Staff create/edit with multiple actions, Staff safe forbidden response, and Requester read-only view |
+| `staff-dashboard/` | Refreshed for Issue #69, 3 genuine images, visually inspected | `desktop-summary.png`, `tablet-summary.png`, and `mobile-summary.png` show Staff identity, current-user Actions Taken, recent Tickets, active status and priority counts with actionable zero-valued rows, and responsive card layout. API/component/E2E tests verify query agreement, safe loading/failure, and filtered drill-down behavior. |
+| `requester-dashboard/` | Refreshed for Issue #69, 3 genuine images, visually inspected | `desktop-summary.png`, `tablet-summary.png`, and `mobile-summary.png` show Requester identity, owned Ticket metrics, recent Tickets, and the empty recently resolved state. API/component/E2E tests verify ownership isolation and filtered drill-down behavior. |
+| `actions-taken/` | Refreshed for Issue #69, 12 genuine images, visually inspected | Four states at desktop, tablet, and mobile: Staff follow-up validation, Staff create/edit with multiple actions, Staff safe forbidden response, and Requester read-only view |
 
 The Actions Taken images use these viewport sizes: desktop 1440×900, tablet 834×1112, and mobile 390×844. Each filename begins with its viewport (`desktop-`, `tablet-`, or `mobile-`) and ends with the state below:
 
@@ -173,8 +175,8 @@ The Actions Taken images use these viewport sizes: desktop 1440×900, tablet 834
 
 For example, `desktop-staff-follow-up-validation.png`, `tablet-staff-follow-up-validation.png`, and `mobile-staff-follow-up-validation.png` prove the same validation state at the three required viewport sizes. The equivalent three-file groups exist for the other suffixes.
 
-- [ ] All screenshots come from the running application, not mockups.
-- [ ] Images show the matching authenticated role and meaningful data.
-- [ ] No image contains secrets, tokens, or unrelated personal data.
-- [ ] Desktop/tablet/mobile layouts are readable without extreme zoom.
+- [x] All screenshots come from the running application, not mockups.
+- [x] Images show the matching authenticated role and meaningful data.
+- [x] No image contains secrets, tokens, or unrelated personal data.
+- [x] Desktop/tablet/mobile layouts are readable without extreme zoom.
 - [ ] Screenshots are committed through the reviewed Issue PR flow and included in the external Answer Sheet only with concise captions.

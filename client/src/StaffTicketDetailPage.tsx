@@ -332,6 +332,7 @@ export function StaffTicketDetailPage() {
   const statusTriggerRef = useRef<HTMLButtonElement | null>(null);
   const preserveStatusSelectionRef = useRef<TicketStatus | ''>('');
   const statusCancelRef = useRef<HTMLButtonElement | null>(null);
+  const statusDialogRef = useRef<HTMLDivElement | null>(null);
   const previousPendingStatusRef = useRef<TicketStatus | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationErrorCode, setOperationErrorCode] = useState<string | null>(null);
@@ -415,6 +416,42 @@ export function StaffTicketDetailPage() {
       statusTriggerRef.current?.focus();
     }
   }, [pendingStatus]);
+
+  useEffect(() => {
+    if (pendingStatus === null) return undefined;
+    const dialog = statusDialogRef.current;
+    if (!dialog) return undefined;
+
+    const getFocusableElements = () => Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (busyAction !== 'status') setPendingStatus(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+      if (event.shiftKey && (activeElement === firstElement || !dialog.contains(activeElement))) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && (activeElement === lastElement || !dialog.contains(activeElement))) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [busyAction, pendingStatus]);
 
   const runMutation = async (action: string, callback: () => Promise<void>) => {
     if (busyAction) return;
@@ -594,7 +631,7 @@ export function StaffTicketDetailPage() {
     <section className="ticket-detail-page staff-ticket-detail-page" aria-labelledby={titleId}>
       <div className="page-heading-row ticket-detail-heading">
         <div>
-          <p className="eyebrow">TokTickIT / Lab 3</p>
+          <p className="eyebrow">TokTickIT / Lab 4</p>
           <h1 id={titleId}>{title}</h1>
           <p className="text-secondary mb-0">
             {isAdministrator
@@ -757,7 +794,7 @@ export function StaffTicketDetailPage() {
 
           {pendingStatus && (
             <div className="ticket-confirmation-backdrop">
-              <div className="ticket-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="status-confirmation-title" aria-describedby="status-confirmation-description">
+              <div ref={statusDialogRef} className="ticket-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="status-confirmation-title" aria-describedby="status-confirmation-description">
                 <h2 id="status-confirmation-title">Confirm status change</h2>
                 <p id="status-confirmation-description">This action will set the Ticket to <strong>{pendingStatus}</strong>. Confirm that this formal workflow change is intended.</p>
                 <div className="action-row">

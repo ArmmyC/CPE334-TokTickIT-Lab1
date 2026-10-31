@@ -124,6 +124,14 @@ afterEach(() => {
 });
 
 describe('Lab 2 Ticket Detail screen', () => {
+  it('identifies the extended detail as Lab 4 and names Actions Taken in its summary', async () => {
+    stubDetailApi();
+    await renderDetail();
+
+    expect(await screen.findByText('TokTickIT / Lab 4')).toBeInTheDocument();
+    expect(screen.getByText('View your Ticket, Actions Taken, attachments, and Public Comments.')).toBeInTheDocument();
+  });
+
   it('loads owned Ticket data as read-only and shows active and removed attachment metadata', async () => {
     const fetchMock = stubDetailApi();
 
@@ -204,5 +212,31 @@ describe('Lab 2 Ticket Detail screen', () => {
     ))).toBe(true));
     expect(screen.getByText(/does not change the formal Ticket status/i)).toBeInTheDocument();
     expect(screen.queryByText('Internal Notes')).not.toBeInTheDocument();
+  });
+
+  it('traps keyboard focus in the resolution dialog, closes with Escape, and restores focus', async () => {
+    stubDetailApi();
+    await renderDetail();
+    expect(await screen.findByText('TKT-2026-000042')).toBeInTheDocument();
+
+    const trigger = screen.getByRole('button', { name: 'Problem Appears Resolved' });
+    fireEvent.click(trigger);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm resolution indication' });
+    const cancelButton = screen.getByRole('button', { name: 'Cancel' });
+    const confirmButton = screen.getByRole('button', { name: 'Confirm Problem Appears Resolved' });
+    await waitFor(() => expect(cancelButton).toHaveFocus());
+
+    confirmButton.focus();
+    fireEvent.keyDown(confirmButton, { key: 'Tab' });
+    expect(cancelButton).toHaveFocus();
+
+    cancelButton.focus();
+    fireEvent.keyDown(cancelButton, { key: 'Tab', shiftKey: true });
+    expect(confirmButton).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 });

@@ -1,7 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { createAuthTestHarness, withAuthDatabase } from '../lab-03/auth-test-harness.js';
+import {
+  createDashboardAction,
+  createDashboardTestContext,
+  createDashboardTicket,
+  loginDashboardUser,
+} from './dashboard-api-test-support.js';
+import { withIsolatedTestDatabase } from './isolated-database-test-support.js';
 
 const fixedTime = new Date('2026-09-08T12:00:00.000Z');
 
@@ -347,6 +355,63 @@ describe('Lab 4 Ticket workflow API', () => {
     expect(lockOrder).toBeDefined();
     expect(gateReadOrder).toBeGreaterThan(lockOrder ?? 0);
   });
+
+  it('serializes a required follow-up create against a concurrent resolution request in PostgreSQL', async () => {
+    await withIsolatedTestDatabase(async (database) => {
+      const context = await createDashboardTestContext(database as never);
+      const ticket = await createDashboardTicket(context, {
+        status: 'IN_PROGRESS',
+        priority: 'HIGH',
+        requesterActivityAt: new Date(),
+        staffActivityAt: new Date(),
+      });
+      await createDashboardAction(context, {
+        ticketId: ticket.id,
+        performedById: context.users.staff.id,
+        actionAt: new Date(Date.now() - 60_000),
+        result: 'The initial action completed without follow-up.',
+      });
+      const [actionStaff, statusStaff] = await Promise.all([
+        loginDashboardUser(context, context.users.staff),
+        loginDashboardUser(context, context.users.staff),
+      ]);
+      const actionRequest = actionStaff.agent
+        .post(`/api/staff/tickets/${ticket.id}/actions`)
+        .set('X-CSRF-Token', actionStaff.csrfToken)
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          actionAt: new Date().toISOString(),
+          description: 'Verify the repaired connection next week.',
+          result: 'The connection is currently stable.',
+          followUpRequired: true,
+          followUpNote: 'Confirm stability after the next scheduled update.',
+        });
+      const statusRequest = statusStaff.agent
+        .patch(`/api/staff/tickets/${ticket.id}/status`)
+        .set('X-CSRF-Token', statusStaff.csrfToken)
+        .send({ expectedVersion: 0, nextStatus: 'RESOLVED', confirmed: true });
+
+      const [actionResponse, statusResponse] = await Promise.all([actionRequest, statusRequest]);
+      const storedTicket = await database.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
+      const storedActions = await database.actionTaken.findMany({ where: { ticketId: ticket.id } });
+      const incompleteRequiredFollowUp = storedActions.some((action) => (
+        action.followUpRequired && !action.followUpCompleted
+      ));
+
+      if (storedTicket.currentStatus === 'RESOLVED') {
+        expect(statusResponse.status).toBe(200);
+        expect(actionResponse.status).toBe(409);
+        expect(actionResponse.body.code).toBe('ACTION_TAKEN_LOCKED');
+        expect(incompleteRequiredFollowUp).toBe(false);
+      } else {
+        expect(storedTicket.currentStatus).toBe('IN_PROGRESS');
+        expect(actionResponse.status).toBe(201);
+        expect(statusResponse.status).toBe(409);
+        expect(statusResponse.body.code).toBe('TICKET_VERSION_CONFLICT');
+        expect(incompleteRequiredFollowUp).toBe(true);
+      }
+    });
+  }, 90_000);
 
   it('returns the matrix conflict without changing the Ticket or status history', async () => {
     const harness = await createWorkflowHarness();

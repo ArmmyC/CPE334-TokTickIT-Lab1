@@ -1,7 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { createAuthTestHarness, withAuthDatabase } from '../lab-03/auth-test-harness.js';
+import {
+  createDashboardTestContext,
+  createDashboardTicket,
+  loginDashboardUser,
+} from './dashboard-api-test-support.js';
+import { withIsolatedTestDatabase } from './isolated-database-test-support.js';
 
 const actionKey = '11111111-1111-4111-8111-111111111111';
 
@@ -430,4 +437,66 @@ describe('Lab 4 Actions Taken API', () => {
     expect(malformedKey.status).toBe(400);
     expect(harness.actions.size).toBe(0);
   });
+
+  it('serializes concurrent create retries and stale Action Taken edits in PostgreSQL', async () => {
+    await withIsolatedTestDatabase(async (database) => {
+      const context = await createDashboardTestContext(database as never);
+      const ticket = await createDashboardTicket(context, {
+        status: 'IN_PROGRESS',
+        priority: 'HIGH',
+        requesterActivityAt: new Date(),
+        staffActivityAt: new Date(),
+      });
+      const [firstStaff, secondStaff] = await Promise.all([
+        loginDashboardUser(context, context.users.staff),
+        loginDashboardUser(context, context.users.staff),
+      ]);
+      const key = randomUUID();
+      const payload = actionPayload();
+      const createRequest = (staff: typeof firstStaff) => staff.agent
+        .post(`/api/staff/tickets/${ticket.id}/actions`)
+        .set('X-CSRF-Token', staff.csrfToken)
+        .set('Idempotency-Key', key)
+        .send(payload);
+
+      const created = await Promise.all([createRequest(firstStaff), createRequest(secondStaff)]);
+      expect(created.map(({ status }) => status).sort()).toEqual([200, 201]);
+      const replay = created.find(({ status }) => status === 200);
+      const original = created.find(({ status }) => status === 201);
+      expect(replay?.body.replayed).toBe(true);
+      expect(replay?.body.actionTaken.id).toBe(original?.body.actionTaken.id);
+
+      const actionId = original?.body.actionTaken.id as number;
+      const editRequest = (staff: typeof firstStaff, description: string) => staff.agent
+        .patch(`/api/staff/tickets/${ticket.id}/actions/${actionId}`)
+        .set('X-CSRF-Token', staff.csrfToken)
+        .send({
+          expectedVersion: 1,
+          ...payload,
+          followUpCompleted: false,
+          description,
+        });
+      const edits = await Promise.all([
+        editRequest(firstStaff, 'Concurrent edit from the first Staff session.'),
+        editRequest(secondStaff, 'Concurrent edit from the second Staff session.'),
+      ]);
+
+      expect(edits.map(({ status }) => status).sort()).toEqual([200, 409]);
+      const conflict = edits.find(({ status }) => status === 409);
+      expect(conflict?.body.code).toBe('ACTION_TAKEN_VERSION_CONFLICT');
+      const storedAction = await database.actionTaken.findUniqueOrThrow({
+        where: { id: actionId },
+      });
+      expect(storedAction.version).toBe(2);
+      expect([
+        'Concurrent edit from the first Staff session.',
+        'Concurrent edit from the second Staff session.',
+      ]).toContain(storedAction.description);
+      const storedTicket = await database.ticket.findUniqueOrThrow({
+        where: { id: ticket.id },
+        select: { version: true },
+      });
+      expect(storedTicket.version).toBe(2);
+    });
+  }, 90_000);
 });
