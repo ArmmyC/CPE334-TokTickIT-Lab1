@@ -148,6 +148,8 @@ Issue #68 browser checkpoint, 2026-10-31: the Requester and IT Staff dashboard f
 
 Issue #69 accessibility audit, 2026-10-31: I manually reviewed the UI source and all 18 genuine Lab 4 screenshots for Requester and IT Staff at desktop 1440×900, tablet 834×1112, and mobile 390×844. The pages use named navigation/main landmarks and a page-level heading; controls have visible labels or accessible names; Action Taken errors are associated with invalid fields and announced in an alert; loading and success states use status announcements; status and follow-up meanings remain explicit text; and user-entered Action Taken and history content is rendered as React text. Automated keyboard checks cover dashboard Tab/Enter navigation, the complete Action Taken create flow at all three viewports, inline form focus entry and return, validation focus preservation, and Staff/Requester confirmation dialog focus trapping, Escape, and restoration. The Requester dialog remains keyboard-contained while both controls are disabled during its pending request and after a failed request re-enables them. The shared `:focus-visible` outline and text contrast are covered by `client/tests/lab-04/VisualStyle.test.ts`. Chromium's native `datetime-local` control has multiple keyboard segments, so the Actions Taken browser test tabs through those segments before checking the next field. No screen-reader session was run; no unresolved issue was found in the audited checklist.
 
+Issue #78 history evidence, 2026-10-31: the Staff and owning Requester screenshots show Ticket `TKT-2026-000004` at desktop 1440×900, tablet 834×1112, and mobile 390×844. Each view shows the same three ordered transitions, `WAITING_FOR_REQUESTER → RESOLVED → CLOSED → REOPENED`; the Requester view has no status control. The focused E2E test verifies the same transition order and the Requester's read-only access. All six genuine full-page images were inspected for readable status text, role identity, responsive layout, clipping, and overflow.
+
 ## 10. Screenshot Evidence and Visual Checklist
 
 Capture genuine application screens only after implementation. Store them at these exact paths:
@@ -162,7 +164,7 @@ Evidence status, with each image tied to a role, viewport, and observable state:
 | --- | --- | --- |
 | `staff-dashboard/` | Refreshed for Issue #69, 3 genuine images, visually inspected | `desktop-summary.png`, `tablet-summary.png`, and `mobile-summary.png` show Staff identity, current-user Actions Taken, recent Tickets, active status and priority counts with actionable zero-valued rows, and responsive card layout. API/component/E2E tests verify query agreement, safe loading/failure, and filtered drill-down behavior. |
 | `requester-dashboard/` | Refreshed for Issue #69, 3 genuine images, visually inspected | `desktop-summary.png`, `tablet-summary.png`, and `mobile-summary.png` show Requester identity, owned Ticket metrics, recent Tickets, and the empty recently resolved state. API/component/E2E tests verify ownership isolation and filtered drill-down behavior. |
-| `actions-taken/` | Refreshed for Issue #69, 12 genuine images, visually inspected | Four states at desktop, tablet, and mobile: Staff follow-up validation, Staff create/edit with multiple actions, Staff safe forbidden response, and Requester read-only view |
+| `actions-taken/` | Issue #69 and #78: 18 genuine images, visually inspected on 2026-10-31 | Four Actions Taken states plus populated Ticket Status History for Staff and the owning Requester at desktop, tablet, and mobile |
 
 The Actions Taken images use these viewport sizes: desktop 1440×900, tablet 834×1112, and mobile 390×844. Each filename begins with its viewport (`desktop-`, `tablet-`, or `mobile-`) and ends with the state below:
 
@@ -172,6 +174,8 @@ The Actions Taken images use these viewport sizes: desktop 1440×900, tablet 834
 | `staff-create-edit-multiple-actions.png` | Staff can distinguish Ticket Owner from each action's performer, view multiple actions on one Ticket, and see follow-up completion separately from the original requirement. |
 | `staff-forbidden-safe-error.png` | Staff receives a safe forbidden response and the recoverable form retains its entered values. |
 | `requester-read-only.png` | The owning Requester can read Actions Taken without staff create/edit controls or editor-only metadata. |
+| `staff-status-history.png` | Staff sees the same Ticket after `WAITING_FOR_REQUESTER → RESOLVED → CLOSED → REOPENED`, with all three transitions in chronological order. |
+| `requester-status-history.png` | The owning Requester sees that Ticket's same ordered history without Staff status controls. |
 
 For example, `desktop-staff-follow-up-validation.png`, `tablet-staff-follow-up-validation.png`, and `mobile-staff-follow-up-validation.png` prove the same validation state at the three required viewport sizes. The equivalent three-file groups exist for the other suffixes.
 
@@ -179,4 +183,5 @@ For example, `desktop-staff-follow-up-validation.png`, `tablet-staff-follow-up-v
 - [x] Images show the matching authenticated role and meaningful data.
 - [x] No image contains secrets, tokens, or unrelated personal data.
 - [x] Desktop/tablet/mobile layouts are readable without extreme zoom.
+- [x] Issue #78 Staff and owning Requester history images are captured and visually inspected at all three required viewport sizes.
 - [ ] Screenshots are committed through the reviewed Issue PR flow and included in the external Answer Sheet only with concise captions.
