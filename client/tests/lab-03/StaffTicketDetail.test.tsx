@@ -34,6 +34,9 @@ const detailResponse = {
     requestedPriority: 'HIGH',
     itPriority: 'HIGH',
     currentStatus: 'IN_PROGRESS',
+    version: 4,
+    statusHistory: [],
+    actionsTaken: [],
     owner: { id: 3, name: 'Somsak Staff', email: 'somsak@example.test', role: 'IT_STAFF' },
     attachments: [{
       id: 7,
@@ -164,6 +167,12 @@ afterEach(() => {
 });
 
 describe('Lab 3 Staff Ticket Detail screen', () => {
+  it('identifies the extended Ticket Detail screen as part of Lab 4', async () => {
+    await renderStaffDetail();
+
+    expect(await screen.findByText('TokTickIT / Lab 4')).toBeInTheDocument();
+  });
+
   it('renders protected Ticket information, operational controls, attachments, comments, and private notes', async () => {
     await renderStaffDetail();
 
@@ -173,7 +182,7 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
     expect(screen.getByRole('spinbutton', { name: 'Owner User ID' })).toHaveValue(3);
     expect(screen.getByRole('button', { name: 'Claim Ticket' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'IT Priority' })).toHaveValue('HIGH');
-    expect(screen.getByRole('combobox', { name: 'Current Status' })).toHaveValue('IN_PROGRESS');
+    expect(screen.getByRole('combobox', { name: 'Next Status' })).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Update Status' })).toBeInTheDocument();
     expect(screen.getByText('evidence.pdf')).toBeInTheDocument();
     expect(screen.getByText('The issue still occurs after restarting.')).toBeInTheDocument();
@@ -200,7 +209,7 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
       && String(init.body).includes('"itPriority":"URGENT"')
     ))).toBe(true));
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Current Status' }), { target: { value: 'RESOLVED' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Next Status' }), { target: { value: 'RESOLVED' } });
     fireEvent.click(screen.getByRole('button', { name: 'Update Status' }));
     expect(screen.getByRole('button', { name: 'Confirm status change' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm status change' }));
@@ -258,7 +267,7 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
     await renderStaffDetail();
 
     const statusTrigger = screen.getByRole('button', { name: 'Update Status' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Current Status' }), { target: { value: 'RESOLVED' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Next Status' }), { target: { value: 'RESOLVED' } });
     fireEvent.click(statusTrigger);
 
     const cancelButton = await screen.findByRole('button', { name: 'Cancel status change' });
@@ -268,6 +277,31 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
     await waitFor(() => expect(statusTrigger).toHaveFocus());
   });
 
+  it('traps keyboard focus in the status dialog, closes with Escape, and restores focus', async () => {
+    await renderStaffDetail();
+
+    const statusTrigger = screen.getByRole('button', { name: 'Update Status' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Next Status' }), { target: { value: 'RESOLVED' } });
+    fireEvent.click(statusTrigger);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm status change' });
+    const cancelButton = screen.getByRole('button', { name: 'Cancel status change' });
+    const confirmButton = screen.getByRole('button', { name: 'Confirm status change' });
+    await waitFor(() => expect(cancelButton).toHaveFocus());
+
+    confirmButton.focus();
+    fireEvent.keyDown(confirmButton, { key: 'Tab' });
+    expect(cancelButton).toHaveFocus();
+
+    cancelButton.focus();
+    fireEvent.keyDown(cancelButton, { key: 'Tab', shiftKey: true });
+    expect(confirmButton).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(statusTrigger).toHaveFocus();
+  });
+
   it('keeps unrelated actions enabled while one operation is saving', async () => {
     let resolveOwnerUpdate!: (response: ReturnType<typeof jsonResponse>) => void;
     const ownerUpdateResponse = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
@@ -275,6 +309,7 @@ describe('Lab 3 Staff Ticket Detail screen', () => {
     });
     await renderStaffDetail({ ownerUpdateResponse });
 
+    fireEvent.change(screen.getByRole('combobox', { name: 'Next Status' }), { target: { value: 'WAITING_FOR_REQUESTER' } });
     fireEvent.click(screen.getByRole('button', { name: 'Claim Ticket' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Saving Owner...' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Save IT Priority' })).not.toBeDisabled();

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiErrorMessage, apiFetch, isApiErrorBody, readJson } from './api';
 import { useAuth } from './auth-context';
 
@@ -62,9 +62,13 @@ type StaffTicketQueueResponse = {
 type StaffTicketQueueFilters = {
   search: string;
   status: string;
+  statusGroup: '' | 'ACTIVE';
   requestedPriority: string;
   itPriority: string;
   ownerId: string;
+  activitySince: string;
+  activityUntil: string;
+  actionPerformedBy: '' | 'ME';
   categoryId: string;
   relatedSystemId: string;
   sortBy: SortField;
@@ -83,9 +87,13 @@ type QueueError = {
 const DEFAULT_FILTERS: StaffTicketQueueFilters = {
   search: '',
   status: '',
+  statusGroup: '',
   requestedPriority: '',
   itPriority: '',
   ownerId: '',
+  activitySince: '',
+  activityUntil: '',
+  actionPerformedBy: '',
   categoryId: '',
   relatedSystemId: '',
   sortBy: 'updatedAt',
@@ -113,6 +121,24 @@ const statusOptions: Array<[TicketStatus, string]> = [
 const ownerRoles = new Set(['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR']);
 const ticketStatuses = new Set(statusOptions.map(([value]) => value));
 const ticketPriorities = new Set(priorityOptions.map(([value]) => value));
+
+function filtersFromSearch(search: string): StaffTicketQueueFilters {
+  const parameters = new URLSearchParams(search);
+  const status = parameters.get('status') ?? '';
+  const statusGroup = parameters.get('statusGroup');
+  const itPriority = parameters.get('itPriority') ?? '';
+  const ownerId = parameters.get('ownerId') ?? '';
+  return {
+    ...DEFAULT_FILTERS,
+    status: ticketStatuses.has(status as TicketStatus) ? status : '',
+    statusGroup: statusGroup === 'ACTIVE' ? 'ACTIVE' : '',
+    itPriority: itPriority === 'UNASSIGNED' || ticketPriorities.has(itPriority as TicketPriority) ? itPriority : '',
+    ownerId: ownerId === 'ME' || ownerId === 'UNASSIGNED' || /^\d+$/.test(ownerId) ? ownerId : '',
+    activitySince: parameters.get('activitySince') ?? '',
+    activityUntil: parameters.get('activityUntil') ?? '',
+    actionPerformedBy: parameters.get('actionPerformedBy') === 'ME' ? 'ME' : '',
+  };
+}
 
 function isReferenceOption(value: unknown): value is ReferenceOption {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -215,9 +241,13 @@ function buildStaffQueueUrl(filters: StaffTicketQueueFilters): string {
   });
   appendQueryValue(parameters, 'search', filters.search);
   appendQueryValue(parameters, 'status', filters.status);
+  appendQueryValue(parameters, 'statusGroup', filters.statusGroup);
   appendQueryValue(parameters, 'requestedPriority', filters.requestedPriority);
   appendQueryValue(parameters, 'itPriority', filters.itPriority);
   appendQueryValue(parameters, 'ownerId', filters.ownerId);
+  appendQueryValue(parameters, 'activitySince', filters.activitySince);
+  appendQueryValue(parameters, 'activityUntil', filters.activityUntil);
+  appendQueryValue(parameters, 'actionPerformedBy', filters.actionPerformedBy);
   appendQueryValue(parameters, 'categoryId', filters.categoryId);
   appendQueryValue(parameters, 'relatedSystemId', filters.relatedSystemId);
   return `/api/staff/tickets?${parameters.toString()}`;
@@ -258,12 +288,14 @@ async function requestQueue(url: string): Promise<StaffTicketQueueResponse> {
 
 export function StaffTicketQueuePage() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<ReferenceOption[]>([]);
   const [relatedSystems, setRelatedSystems] = useState<ReferenceOption[]>([]);
   const [referenceState, setReferenceState] = useState<LoadState>('loading');
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
-  const [filters, setFilters] = useState<StaffTicketQueueFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<StaffTicketQueueFilters>(() => filtersFromSearch(location.search));
   const [listState, setListState] = useState<LoadState>('loading');
   const [list, setList] = useState<StaffTicketQueueResponse | null>(null);
   const [queueError, setQueueError] = useState<QueueError | null>(null);
@@ -358,9 +390,13 @@ export function StaffTicketQueuePage() {
     () => Boolean(
       filters.search.trim()
       || filters.status
+      || filters.statusGroup
       || filters.requestedPriority
       || filters.itPriority
       || filters.ownerId
+      || filters.activitySince
+      || filters.activityUntil
+      || filters.actionPerformedBy
       || filters.categoryId
       || filters.relatedSystemId,
     ),
@@ -371,16 +407,24 @@ export function StaffTicketQueuePage() {
     key: K,
     value: StaffTicketQueueFilters[K],
   ) => {
-    setFilters((current) => ({ ...current, [key]: value, page: 1 }));
+    setFilters((current) => ({
+      ...current,
+      [key]: value,
+      page: 1,
+      ...(key === 'status' && value ? { statusGroup: '' } : {}),
+      ...(key === 'statusGroup' && value ? { status: '' } : {}),
+    }));
   };
 
   const clearFilters = () => {
     setFilters({ ...DEFAULT_FILTERS });
+    navigate('/staff/tickets', { replace: true });
   };
 
   const retry = () => {
     setRetryKey((key) => key + 1);
   };
+  const ticketDetailBase = user?.role === 'ADMINISTRATOR' ? '/admin/tickets' : '/staff/tickets';
 
   return (
     <section className="my-tickets-page staff-ticket-queue-page" aria-labelledby="staff-ticket-queue-title">
@@ -414,8 +458,15 @@ export function StaffTicketQueuePage() {
             />
           </div>
           <div className="ticket-field">
+            <label htmlFor="staff-ticket-status-group-filter">Status Group</label>
+            <select id="staff-ticket-status-group-filter" value={filters.statusGroup} onChange={(event) => updateFilter('statusGroup', event.target.value as StaffTicketQueueFilters['statusGroup'])}>
+              <option value="">All Status Groups</option>
+              <option value="ACTIVE">Active Tickets</option>
+            </select>
+          </div>
+          <div className="ticket-field">
             <label htmlFor="staff-ticket-status-filter">Status</label>
-            <select id="staff-ticket-status-filter" value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}>
+            <select id="staff-ticket-status-filter" value={filters.status} onChange={(event) => updateFilter('status', event.target.value)} disabled={Boolean(filters.statusGroup)}>
               <option value="">All Statuses</option>
               {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
@@ -440,7 +491,15 @@ export function StaffTicketQueuePage() {
             <select id="staff-ticket-owner-filter" value={filters.ownerId} onChange={(event) => updateFilter('ownerId', event.target.value)}>
               <option value="">All Owners</option>
               <option value="UNASSIGNED">Unassigned</option>
+              <option value="ME">Me</option>
               {ownerOptions.map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
+            </select>
+          </div>
+          <div className="ticket-field">
+            <label htmlFor="staff-ticket-action-performer-filter">Action Taken Performer</label>
+            <select id="staff-ticket-action-performer-filter" value={filters.actionPerformedBy} onChange={(event) => updateFilter('actionPerformedBy', event.target.value as StaffTicketQueueFilters['actionPerformedBy'])}>
+              <option value="">Any Performer</option>
+              <option value="ME">Actions Taken by Me</option>
             </select>
           </div>
           <div className="ticket-field">
@@ -533,7 +592,7 @@ export function StaffTicketQueuePage() {
                     <tbody>
                       {list.items.map((item) => (
                         <tr key={item.id}>
-                          <td><Link to={`/staff/tickets/${item.id}`}>{item.ticketNumber}</Link></td>
+                          <td><Link to={`${ticketDetailBase}/${item.id}`}>{item.ticketNumber}</Link></td>
                           <td>{formatDate(item.ticketDate)}</td>
                           <td>{item.summary}</td>
                           <td className="staff-queue-requester"><strong>{item.requester.name}</strong><small>{item.requester.email}</small></td>
@@ -550,7 +609,7 @@ export function StaffTicketQueuePage() {
                             ) : 'Unassigned'}
                           </td>
                           <td>{formatDate(item.updatedAt)}</td>
-                          <td><Link className="btn btn-sm btn-secondary" to={`/staff/tickets/${item.id}`}>View Detail</Link></td>
+                          <td><Link className="btn btn-sm btn-secondary" to={`${ticketDetailBase}/${item.id}`}>View Detail</Link></td>
                         </tr>
                       ))}
                     </tbody>
@@ -561,7 +620,7 @@ export function StaffTicketQueuePage() {
                 {list.items.map((item) => (
                   <article className="ticket-card staff-queue-card" key={item.id}>
                     <div className="ticket-card-heading">
-                      <Link to={`/staff/tickets/${item.id}`} className="ticket-card-number">{item.ticketNumber}</Link>
+                      <Link to={`${ticketDetailBase}/${item.id}`} className="ticket-card-number">{item.ticketNumber}</Link>
                       <span className="ticket-status-badge">{item.currentStatus}</span>
                     </div>
                     <dl className="ticket-card-fields">
@@ -586,7 +645,7 @@ export function StaffTicketQueuePage() {
                       </div>
                       <div><dt>Last Updated</dt><dd>{formatDate(item.updatedAt)}</dd></div>
                     </dl>
-                    <Link className="btn btn-secondary" to={`/staff/tickets/${item.id}`}>View Detail</Link>
+                    <Link className="btn btn-secondary" to={`${ticketDetailBase}/${item.id}`}>View Detail</Link>
                   </article>
                 ))}
               </div>

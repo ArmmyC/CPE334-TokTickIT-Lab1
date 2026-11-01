@@ -248,7 +248,7 @@ describe('Lab 3 Staff Ticket Queue API', () => {
     expect(harness.count).not.toHaveBeenCalled();
   });
 
-  it('returns safe authentication and role failures without touching queue data', async () => {
+  it('requires authentication, denies Requesters, and permits read-only Administrator queue access', async () => {
     const harness = await createStaffQueueHarness();
 
     const unauthenticated = await request(harness.app).get('/api/staff/tickets');
@@ -271,16 +271,17 @@ describe('Lab 3 Staff Ticket Queue API', () => {
     });
     const admin = await adminHarness.login(adminHarness.app, 'somsak@example.test');
     const adminResponse = await admin.agent.get('/api/staff/tickets');
-    expect(adminResponse.status).toBe(403);
-    expect(adminResponse.body).toEqual({
-      error: 'You do not have permission to access this resource.',
-      code: 'FORBIDDEN',
-    });
+    expect(adminResponse.status).toBe(200);
+    expect(adminResponse.body.items).toEqual([expect.objectContaining({
+      id: 12,
+      ticketNumber: 'TKT-2026-000012',
+      currentStatus: 'IN_PROGRESS',
+    })]);
 
     expect(harness.findMany).not.toHaveBeenCalled();
     expect(harness.count).not.toHaveBeenCalled();
-    expect(adminHarness.findMany).not.toHaveBeenCalled();
-    expect(adminHarness.count).not.toHaveBeenCalled();
+    expect(adminHarness.findMany).toHaveBeenCalledTimes(1);
+    expect(adminHarness.count).toHaveBeenCalledTimes(1);
   });
 
   it('rejects inactive Staff accounts and returns a safe server failure', async () => {

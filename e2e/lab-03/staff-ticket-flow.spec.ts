@@ -172,7 +172,7 @@ test('IT Staff can paginate, sort, search, reassign, and operate a Ticket Detail
   await page.getByLabel('IT Priority', { exact: true }).selectOption('MEDIUM');
   await page.getByRole('button', { name: 'Save IT Priority', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'IT Priority updated.' })).toBeVisible();
-  await page.getByLabel('Current Status', { exact: true }).selectOption('OPEN');
+  await page.getByLabel('Next Status', { exact: true }).selectOption('OPEN');
   await page.getByRole('button', { name: 'Update Status', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Ticket status updated.' })).toBeVisible();
 
@@ -192,7 +192,8 @@ test('IT Staff can paginate, sort, search, reassign, and operate a Ticket Detail
   await expect(headerFields.getByText(SEEDED_ACCOUNTS.secondaryStaff.name, { exact: true })).toBeVisible();
   await expect(headerFields.locator(':scope > div').filter({ hasText: 'Requested Priority' }).locator('.ticket-priority-badge')).toHaveText('HIGH');
   await expect(page.getByLabel('IT Priority', { exact: true })).toHaveValue('MEDIUM');
-  await expect(page.getByLabel('Current Status', { exact: true })).toHaveValue('OPEN');
+  await expect(page.getByLabel('Next Status', { exact: true })).toHaveValue('');
+  await expect(headerFields.getByText('OPEN', { exact: true })).toBeVisible();
   await expect(page.getByText(publicComment, { exact: true })).toBeVisible();
   await expect(page.getByText(internalNote, { exact: true })).toBeVisible();
   await saveEvidenceScreenshot(page, 'staff-ticket-detail', projectName, 'operational-detail');

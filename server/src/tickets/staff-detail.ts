@@ -1,4 +1,5 @@
 import type { AuthUserRole } from '../auth/types.js';
+import { serializeActionTaken, type ActionTakenRecord } from './actions-taken.js';
 
 export type StaffTicketStatus =
   | 'NEW'
@@ -39,6 +40,15 @@ export type StaffTicketCommunicationRecord = {
   author: StaffTicketAuthor;
 };
 
+export type TicketStatusHistoryRecord = {
+  id: number;
+  fromStatus: StaffTicketStatus | null;
+  toStatus: StaffTicketStatus;
+  eventKind: 'INITIAL' | 'TRANSITION' | 'LEGACY_BASELINE';
+  actor: StaffTicketAuthor | null;
+  createdAt: Date;
+};
+
 export type StaffTicketBaseRecord = {
   id: number;
   ticketNumber: string;
@@ -52,6 +62,8 @@ export type StaffTicketBaseRecord = {
   requesterResolvedBy: StaffTicketAuthor | null;
   createdAt: Date;
   updatedAt: Date;
+  version: number;
+  lastStaffActivityAt: Date;
   requester: {
     id: number;
     name: string;
@@ -77,6 +89,8 @@ export type StaffTicketDetailRecord = StaffTicketBaseRecord & {
   attachments: StaffTicketAttachmentRecord[];
   publicComments: StaffTicketCommunicationRecord[];
   internalNotes: StaffTicketCommunicationRecord[];
+  actionsTaken: ActionTakenRecord[];
+  statusHistory: TicketStatusHistoryRecord[];
 };
 
 export type StaffTicketDetailDatabase = {
@@ -129,6 +143,20 @@ export type StaffTicketDetailDatabase = {
       data: { ticketId: number; authorId: number; content: string };
     }): Promise<StaffTicketCommunicationRecord>;
   };
+  actionTaken?: {
+    findMany(args: {
+      where: { ticketId: number };
+      orderBy: Array<{ actionAt: 'asc' } | { id: 'asc' }>;
+      select: Record<string, unknown>;
+    }): Promise<ActionTakenRecord[]>;
+  };
+  ticketStatusHistory?: {
+    findMany(args: {
+      where: { ticketId: number };
+      orderBy: Array<{ createdAt: 'asc' } | { id: 'asc' }>;
+      select: Record<string, unknown>;
+    }): Promise<TicketStatusHistoryRecord[]>;
+  };
 };
 
 export const STAFF_TICKET_DETAIL_SELECT = {
@@ -146,6 +174,8 @@ export const STAFF_TICKET_DETAIL_SELECT = {
   },
   createdAt: true,
   updatedAt: true,
+  version: true,
+  lastStaffActivityAt: true,
   requester: {
     select: { id: true, name: true, email: true },
   },
@@ -157,6 +187,17 @@ export const STAFF_TICKET_DETAIL_SELECT = {
   },
   relatedSystem: {
     select: { id: true, name: true },
+  },
+} as const;
+
+export const STAFF_TICKET_STATUS_HISTORY_SELECT = {
+  id: true,
+  fromStatus: true,
+  toStatus: true,
+  eventKind: true,
+  createdAt: true,
+  actor: {
+    select: { id: true, name: true, role: true },
   },
 } as const;
 
@@ -215,6 +256,13 @@ export const STAFF_TICKET_STATUS_TRANSITIONS: Readonly<Record<StaffTicketStatus,
   CANCELLED: ['REOPENED'],
 };
 
+export function isResolutionGateSatisfied(actions: readonly {
+  followUpRequired: boolean;
+  followUpCompleted: boolean;
+}[]): boolean {
+  return actions.length > 0 && actions.every((action) => !action.followUpRequired || action.followUpCompleted);
+}
+
 export class StaffTicketValidationError extends Error {
   constructor(public readonly fieldErrors: Record<string, string>) {
     super('Staff Ticket operation validation failed.');
@@ -233,6 +281,26 @@ export class StaffTicketTransitionConflictError extends Error {
     public readonly allowedStatuses: readonly StaffTicketStatus[],
   ) {
     super('The requested status transition is not allowed.');
+  }
+}
+
+export class StaffTicketVersionConflictError extends Error {
+  constructor(
+    public readonly currentStatus: StaffTicketStatus,
+    public readonly currentVersion: number,
+  ) {
+    super('This Ticket changed in another session. Refresh it before trying again.');
+  }
+}
+
+export class StaffTicketResolutionGateConflictError extends Error {
+  constructor(
+    public readonly currentStatus: StaffTicketStatus,
+    public readonly currentVersion: number,
+    public readonly requiresAtLeastOneActionTaken: boolean,
+    public readonly incompleteRequiredFollowUps: number,
+  ) {
+    super('Complete the required Actions Taken follow-ups before resolving or closing this Ticket.');
   }
 }
 
@@ -292,29 +360,34 @@ export function parseStaffPriorityPayload(payload: unknown): { itPriority: Staff
 }
 
 export function parseStaffStatusPayload(payload: unknown): {
-  currentStatus: StaffTicketStatus;
+  expectedVersion: number;
+  nextStatus: StaffTicketStatus;
   confirmed: boolean;
 } {
   const fieldErrors: Record<string, string> = {};
   if (!isRecord(payload)) {
     throw new StaffTicketValidationError({ form: 'Status details are required.' });
   }
-  hasOnlyFields(payload, ['currentStatus', 'confirmed'], fieldErrors);
-  if (typeof payload.currentStatus !== 'string' || !STAFF_TICKET_STATUSES.includes(payload.currentStatus as StaffTicketStatus)) {
-    fieldErrors.currentStatus = 'Current Status is not valid.';
+  hasOnlyFields(payload, ['expectedVersion', 'nextStatus', 'confirmed'], fieldErrors);
+  if (typeof payload.expectedVersion !== 'number' || !Number.isSafeInteger(payload.expectedVersion) || payload.expectedVersion < 0) {
+    fieldErrors.expectedVersion = 'Expected version must be a nonnegative whole number.';
+  }
+  if (typeof payload.nextStatus !== 'string' || !STAFF_TICKET_STATUSES.includes(payload.nextStatus as StaffTicketStatus)) {
+    fieldErrors.nextStatus = 'Next Status is not valid.';
   }
   if (payload.confirmed !== undefined && typeof payload.confirmed !== 'boolean') {
     fieldErrors.confirmed = 'Confirmation must be true or false.';
   }
-  const currentStatus = payload.currentStatus as StaffTicketStatus;
-  if (['RESOLVED', 'CLOSED', 'CANCELLED'].includes(currentStatus) && payload.confirmed !== true) {
+  const nextStatus = payload.nextStatus as StaffTicketStatus;
+  if (['RESOLVED', 'CLOSED', 'CANCELLED'].includes(nextStatus) && payload.confirmed !== true) {
     fieldErrors.confirmed = 'Confirmation is required for this status.';
   }
   if (Object.keys(fieldErrors).length > 0) {
     throw new StaffTicketValidationError(fieldErrors);
   }
   return {
-    currentStatus,
+    expectedVersion: payload.expectedVersion as number,
+    nextStatus,
     confirmed: payload.confirmed === true,
   };
 }
@@ -358,6 +431,17 @@ function serializeCommunication(communication: StaffTicketCommunicationRecord) {
   };
 }
 
+export function serializeTicketStatusHistoryEvent(event: TicketStatusHistoryRecord) {
+  return {
+    id: event.id,
+    fromStatus: event.fromStatus,
+    toStatus: event.toStatus,
+    eventKind: event.eventKind,
+    actor: event.actor,
+    createdAt: event.createdAt,
+  };
+}
+
 export function serializeStaffTicketDetail(
   ticket: StaffTicketDetailRecord,
 ) {
@@ -377,6 +461,8 @@ export function serializeStaffTicketDetail(
     attachments: ticket.attachments.map(serializeStaffAttachment),
     publicComments: ticket.publicComments.map(serializeCommunication),
     internalNotes: ticket.internalNotes.map(serializeCommunication),
+    actionsTaken: ticket.actionsTaken.map((action) => serializeActionTaken(action, true)),
+    statusHistory: ticket.statusHistory.map(serializeTicketStatusHistoryEvent),
     requesterResolution: ticket.requesterResolvedAt && ticket.requesterResolvedBy
       ? {
           resolvedAt: ticket.requesterResolvedAt,
@@ -385,5 +471,7 @@ export function serializeStaffTicketDetail(
       : null,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
+    version: ticket.version,
+    lastActivityAt: ticket.lastStaffActivityAt,
   };
 }

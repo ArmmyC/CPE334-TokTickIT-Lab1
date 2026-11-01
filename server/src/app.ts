@@ -18,6 +18,11 @@ import {
 import { createAuthRouter } from './auth/routes.js';
 import type { AuthDatabase } from './auth/types.js';
 import {
+  ACTION_TAKEN_DETAIL_SELECT,
+  REQUESTER_ACTION_TAKEN_DETAIL_SELECT,
+  serializeActionTaken,
+} from './tickets/actions-taken.js';
+import {
   AdminUserConflictError,
   AdminUserNotFoundError,
   AdminUserValidationError,
@@ -46,18 +51,34 @@ import {
   STAFF_TICKET_ATTACHMENT_SELECT,
   STAFF_TICKET_COMMUNICATION_SELECT,
   STAFF_TICKET_DETAIL_SELECT,
-  STAFF_TICKET_STATUS_TRANSITIONS,
+  STAFF_TICKET_STATUS_HISTORY_SELECT,
+  serializeTicketStatusHistoryEvent,
   parseStaffCommunicationPayload,
   parseStaffOwnerPayload,
   parseStaffPriorityPayload,
   parseStaffStatusPayload,
   StaffTicketOwnerConflictError,
+  StaffTicketResolutionGateConflictError,
   StaffTicketResolutionConflictError,
   StaffTicketTransitionConflictError,
+  StaffTicketVersionConflictError,
   StaffTicketValidationError,
   type StaffTicketDetailRecord,
   type StaffTicketDetailDatabase,
+  type TicketStatusHistoryRecord,
 } from './tickets/staff-detail.js';
+import { updateStaffTicketStatus, type StaffTicketWorkflowDatabase } from './tickets/ticket-workflow.js';
+import {
+  createActionsTakenRouter,
+  type ActionTakenApiDatabase,
+} from './tickets/actions-taken-api.js';
+import {
+  ACTIVE_TICKET_STATUSES,
+  findRequesterResolvedTicketIds,
+  getRequesterDashboard,
+  getStaffDashboard,
+  type DashboardDatabase,
+} from './dashboards.js';
 
 export type CategoryRecord = {
   id: number;
@@ -114,6 +135,8 @@ export type TicketRecord = {
 };
 
 export type TicketDetailRecord = TicketRecord & {
+  version: number;
+  lastRequesterVisibleActivityAt: Date;
   requester: {
     id: number;
     name: string;
@@ -167,6 +190,7 @@ type TicketListSearchFilter = {
 
 type TicketListWhere = {
   requesterId: number;
+  id?: { in: number[] };
   OR?: Array<{
     ticketNumber?: TicketListSearchFilter;
     summary?: TicketListSearchFilter;
@@ -175,7 +199,8 @@ type TicketListWhere = {
   categoryId?: number;
   relatedSystemId?: number;
   requestedPriority?: RequestedPriority;
-  currentStatus?: 'NEW';
+  currentStatus?: TicketStatusValue | { in: TicketStatusValue[] };
+  lastRequesterVisibleActivityAt?: { gte?: Date; lte?: Date };
 };
 
 type TicketListOrderBy =
@@ -266,6 +291,13 @@ export type TicketApiDatabase = {
       select: Record<string, unknown>;
     }): Promise<PublicCommentRecord[]>;
   };
+  ticketStatusHistory?: {
+    findMany(args: {
+      where: { ticketId: number };
+      orderBy: Array<{ createdAt: 'asc' } | { id: 'asc' }>;
+      select: Record<string, unknown>;
+    }): Promise<TicketStatusHistoryRecord[]>;
+  };
 };
 
 export type ApplicationApiDatabase = CategoryApiDatabase &
@@ -281,8 +313,22 @@ type CreateTicketInput = {
 };
 
 type RequestedPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+type TicketStatusValue =
+  | 'NEW'
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'WAITING_FOR_REQUESTER'
+  | 'RESOLVED'
+  | 'CLOSED'
+  | 'REOPENED'
+  | 'CANCELLED';
+
+type TicketStatusGroup = 'ACTIVE' | 'RESOLVED';
 
 const REQUESTED_PRIORITIES = new Set<RequestedPriority>(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
+const TICKET_STATUS_VALUES = new Set<TicketStatusValue>([
+  'NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'RESOLVED', 'CLOSED', 'REOPENED', 'CANCELLED',
+]);
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_ACTIVE_ATTACHMENTS = 5;
 const ATTACHMENT_MIME_BY_EXTENSION: Record<string, string> = {
@@ -340,10 +386,55 @@ type TicketListQuery = {
   categoryId?: number;
   relatedSystemId?: number;
   requestedPriority?: RequestedPriority;
-  currentStatus?: 'NEW';
+  currentStatus?: TicketStatusValue;
+  statusGroup?: TicketStatusGroup;
+  activitySince?: Date;
+  activityUntil?: Date;
+  resolvedSince?: Date;
+  resolvedUntil?: Date;
   sortBy: 'ticketDate' | 'updatedAt' | 'ticketNumber';
   sortOrder: 'asc' | 'desc';
 };
+
+function parseUtcQueryTimestamp(
+  value: unknown,
+  field: string,
+  fieldErrors: Record<string, string>,
+): Date | undefined {
+  const source = parseQueryString(value);
+  if (source === undefined) return undefined;
+  const match = typeof source === 'string'
+    ? /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/.exec(source)
+    : null;
+  if (!match) {
+    fieldErrors[field] = 'Time filter must be an offset-aware ISO 8601 timestamp.';
+    return undefined;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[8] === undefined ? 0 : Number(match[8]);
+  const offsetMinute = match[9] === undefined ? 0 : Number(match[9]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12
+      || day < 1 || day > daysInMonth[month - 1]!
+      || hour > 23 || minute > 59 || second > 59
+      || offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) {
+    fieldErrors[field] = 'Time filter must be a valid timestamp.';
+    return undefined;
+  }
+  const parsed = new Date(source as string);
+  if (!Number.isFinite(parsed.getTime())) {
+    fieldErrors[field] = 'Time filter must be a valid timestamp.';
+    return undefined;
+  }
+  return parsed;
+}
 
 function parseTicketListQuery(query: unknown): TicketListQuery {
   const source = isRecord(query) ? query : {};
@@ -391,8 +482,32 @@ function parseTicketListQuery(query: unknown): TicketListQuery {
   }
 
   const currentStatusValue = parseQueryString(source.currentStatus);
-  if (currentStatusValue !== undefined && currentStatusValue !== 'NEW') {
-    fieldErrors.currentStatus = 'Current Status must be NEW.';
+  if (currentStatusValue !== undefined
+      && (currentStatusValue === null || !TICKET_STATUS_VALUES.has(currentStatusValue as TicketStatusValue))) {
+    fieldErrors.currentStatus = 'Current Status must be a valid Ticket status.';
+  }
+
+  const statusGroupValue = parseQueryString(source.statusGroup);
+  if (statusGroupValue !== undefined
+      && (statusGroupValue === null || !['ACTIVE', 'RESOLVED'].includes(statusGroupValue))) {
+    fieldErrors.statusGroup = 'Status Group must be ACTIVE or RESOLVED.';
+  }
+  if (statusGroupValue !== undefined && currentStatusValue !== undefined) {
+    fieldErrors.statusGroup = 'Status Group cannot be combined with Current Status.';
+  }
+
+  const activitySince = parseUtcQueryTimestamp(source.activitySince, 'activitySince', fieldErrors);
+  const activityUntil = parseUtcQueryTimestamp(source.activityUntil, 'activityUntil', fieldErrors);
+  const resolvedSince = parseUtcQueryTimestamp(source.resolvedSince, 'resolvedSince', fieldErrors);
+  const resolvedUntil = parseUtcQueryTimestamp(source.resolvedUntil, 'resolvedUntil', fieldErrors);
+  if (activitySince && activityUntil && activitySince > activityUntil) {
+    fieldErrors.activitySince = 'Activity start must be on or before activity end.';
+  }
+  if (resolvedSince && resolvedUntil && resolvedSince > resolvedUntil) {
+    fieldErrors.resolvedSince = 'Resolution start must be on or before resolution end.';
+  }
+  if ((resolvedSince !== undefined || resolvedUntil !== undefined) && statusGroupValue !== 'RESOLVED') {
+    fieldErrors.resolvedSince = 'Resolution time filters require Status Group RESOLVED.';
   }
 
   const sortByValue = parseQueryString(source.sortBy);
@@ -418,7 +533,12 @@ function parseTicketListQuery(query: unknown): TicketListQuery {
     ...(categoryId === undefined ? {} : { categoryId: categoryId as number }),
     ...(relatedSystemId === undefined ? {} : { relatedSystemId: relatedSystemId as number }),
     ...(requestedPriorityValue === undefined ? {} : { requestedPriority: requestedPriorityValue as RequestedPriority }),
-    ...(currentStatusValue === undefined ? {} : { currentStatus: currentStatusValue as 'NEW' }),
+    ...(currentStatusValue === undefined ? {} : { currentStatus: currentStatusValue as TicketStatusValue }),
+    ...(statusGroupValue === undefined ? {} : { statusGroup: statusGroupValue as TicketStatusGroup }),
+    ...(activitySince === undefined ? {} : { activitySince }),
+    ...(activityUntil === undefined ? {} : { activityUntil }),
+    ...(resolvedSince === undefined ? {} : { resolvedSince }),
+    ...(resolvedUntil === undefined ? {} : { resolvedUntil }),
     sortBy: sortBy as TicketListQuery['sortBy'],
     sortOrder: sortOrder as TicketListQuery['sortOrder'],
   };
@@ -521,6 +641,8 @@ function serializeTicketDetail(ticket: TicketDetailRecord) {
     currentStatus: ticket.currentStatus,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
+    version: ticket.version,
+    lastActivityAt: ticket.lastRequesterVisibleActivityAt,
   };
 }
 
@@ -594,7 +716,7 @@ async function loadStaffTicketDetail(
     return null;
   }
 
-  const [attachments, publicComments, internalNotes] = await Promise.all([
+  const [attachments, publicComments, internalNotes, actionsTaken, statusHistory] = await Promise.all([
     attachmentClient.findMany({
       where: { ticketId },
       orderBy: { uploadedAt: 'asc' },
@@ -610,6 +732,20 @@ async function loadStaffTicketDetail(
       orderBy: { createdAt: 'asc' },
       select: STAFF_TICKET_COMMUNICATION_SELECT,
     }),
+    database.actionTaken?.findMany
+      ? database.actionTaken.findMany({
+          where: { ticketId },
+          orderBy: [{ actionAt: 'asc' }, { id: 'asc' }],
+          select: ACTION_TAKEN_DETAIL_SELECT,
+        })
+      : Promise.resolve([]),
+    database.ticketStatusHistory?.findMany
+      ? database.ticketStatusHistory.findMany({
+          where: { ticketId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: STAFF_TICKET_STATUS_HISTORY_SELECT,
+        })
+      : Promise.resolve([]),
   ]);
 
   return {
@@ -617,6 +753,8 @@ async function loadStaffTicketDetail(
     attachments,
     publicComments,
     internalNotes,
+    actionsTaken,
+    statusHistory,
   };
 }
 
@@ -703,6 +841,28 @@ function sendStaffTicketOperationFailure(
     });
     return;
   }
+  if (error instanceof StaffTicketVersionConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'TICKET_VERSION_CONFLICT',
+      currentStatus: error.currentStatus,
+      currentVersion: error.currentVersion,
+    });
+    return;
+  }
+  if (error instanceof StaffTicketResolutionGateConflictError) {
+    response.status(409).json({
+      error: error.message,
+      code: 'RESOLUTION_GATE_BLOCKED',
+      currentStatus: error.currentStatus,
+      currentVersion: error.currentVersion,
+      gate: {
+        requiresAtLeastOneActionTaken: error.requiresAtLeastOneActionTaken,
+        incompleteRequiredFollowUps: error.incompleteRequiredFollowUps,
+      },
+    });
+    return;
+  }
   if (error instanceof StaffTicketTransitionConflictError) {
     response.status(409).json({
       error: error.message,
@@ -748,6 +908,47 @@ export function createApp(
   });
 
   app.use('/api', requireNormalAccess(database));
+  app.use('/api', createActionsTakenRouter(database as unknown as ActionTakenApiDatabase));
+
+  app.get('/api/requester/dashboard', requireRole(database, ['REQUESTER']), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const dashboard = await getRequesterDashboard(
+        database as unknown as DashboardDatabase,
+        request.auth.user.id,
+      );
+      response.status(200).json({ dashboard });
+    } catch (error) {
+      console.error('TokTickIT Requester dashboard API error:', error);
+      response.status(500).json({
+        error: 'Unable to load the Requester dashboard.',
+        code: 'UNEXPECTED_ERROR',
+      });
+    }
+  });
+
+  app.get('/api/staff/dashboard', requireRole(database, ['IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
+    try {
+      if (!request.auth) {
+        sendAuthenticationRequired(response);
+        return;
+      }
+      const dashboard = await getStaffDashboard(
+        database as unknown as DashboardDatabase,
+        request.auth.user.id,
+      );
+      response.status(200).json({ dashboard });
+    } catch (error) {
+      console.error('TokTickIT Staff dashboard API error:', error);
+      response.status(500).json({
+        error: 'Unable to load the Staff dashboard.',
+        code: 'UNEXPECTED_ERROR',
+      });
+    }
+  });
 
   app.get('/api/admin/users', requireRole(database, ['ADMINISTRATOR']), async (request, response) => {
     try {
@@ -818,7 +1019,7 @@ export function createApp(
     },
   );
 
-  app.get('/api/staff/tickets', requireRole(database, ['IT_STAFF']), async (request, response) => {
+  app.get('/api/staff/tickets', requireRole(database, ['IT_STAFF', 'ADMINISTRATOR']), async (request, response) => {
     try {
       if (!request.auth) {
         sendAuthenticationRequired(response);
@@ -862,7 +1063,7 @@ export function createApp(
         throw new StaffQueueValidationError(fieldErrors);
       }
 
-      const where = buildStaffQueueWhere(query);
+      const where = buildStaffQueueWhere(query, request.auth.user.id);
       const [totalItems, tickets] = await Promise.all([
         staffQueueDatabase.ticket.count({ where }),
         staffQueueDatabase.ticket.findMany({
@@ -962,10 +1163,17 @@ export function createApp(
           throw new StaffTicketOwnerConflictError();
         }
       }
-      await staffDetailDatabase.ticket.update({
-        where: { id: ticketId },
-        data: { ownerId: input.ownerId },
-      });
+      if (input.ownerId !== (ticket.owner?.id ?? null)) {
+        const now = new Date();
+        await staffDetailDatabase.ticket.update({
+          where: { id: ticketId },
+          data: {
+            ownerId: input.ownerId,
+            version: { increment: 1 },
+            lastStaffActivityAt: now,
+          },
+        });
+      }
       const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
       if (!updatedTicket) {
         sendStaffTicketNotFound(response);
@@ -997,10 +1205,18 @@ export function createApp(
         sendStaffTicketNotFound(response);
         return;
       }
-      await staffDetailDatabase.ticket.update({
-        where: { id: ticketId },
-        data: { itPriority: input.itPriority },
-      });
+      if (ticket.itPriority !== input.itPriority) {
+        const now = new Date();
+        await staffDetailDatabase.ticket.update({
+          where: { id: ticketId },
+          data: {
+            itPriority: input.itPriority,
+            version: { increment: 1 },
+            lastStaffActivityAt: now,
+            lastRequesterVisibleActivityAt: now,
+          },
+        });
+      }
       const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
       if (!updatedTicket) {
         sendStaffTicketNotFound(response);
@@ -1023,25 +1239,20 @@ export function createApp(
         throw new StaffTicketValidationError({ ticketId: 'A valid ticketId is required.' });
       }
       const input = parseStaffStatusPayload(request.body);
-      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
-      if (!staffDetailDatabase.ticket?.update) {
-        throw new Error('Staff Ticket status database access is unavailable.');
-      }
-      const ticket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
-      if (!ticket) {
+      const workflowDatabase = database as unknown as StaffTicketWorkflowDatabase;
+      const changed = await updateStaffTicketStatus(
+        workflowDatabase,
+        ticketId,
+        request.auth.user.id,
+        input,
+      );
+      if (!changed) {
         sendStaffTicketNotFound(response);
         return;
       }
-      const allowedStatuses = STAFF_TICKET_STATUS_TRANSITIONS[ticket.currentStatus];
-      if (!allowedStatuses.includes(input.currentStatus)) {
-        throw new StaffTicketTransitionConflictError(ticket.currentStatus, allowedStatuses);
-      }
-      await staffDetailDatabase.ticket.update({
-        where: { id: ticketId },
-        data: { currentStatus: input.currentStatus },
-      });
+      const staffDetailDatabase = database as unknown as StaffTicketDetailDatabase;
       const updatedTicket = await loadStaffTicketDetail(staffDetailDatabase, ticketId);
-      if (!updatedTicket) {
+      if (updatedTicket === null) {
         sendStaffTicketNotFound(response);
         return;
       }
@@ -1296,7 +1507,30 @@ export function createApp(
         ...(query.relatedSystemId === undefined ? {} : { relatedSystemId: query.relatedSystemId }),
         ...(query.requestedPriority === undefined ? {} : { requestedPriority: query.requestedPriority }),
         ...(query.currentStatus === undefined ? {} : { currentStatus: query.currentStatus }),
+        ...(query.statusGroup === 'ACTIVE'
+          ? { currentStatus: { in: [...ACTIVE_TICKET_STATUSES] } }
+          : query.statusGroup === 'RESOLVED'
+            ? { currentStatus: { in: ['RESOLVED', 'CLOSED'] as TicketStatusValue[] } }
+            : {}),
+        ...((query.activitySince !== undefined || query.activityUntil !== undefined)
+          ? {
+              lastRequesterVisibleActivityAt: {
+                ...(query.activitySince === undefined ? {} : { gte: query.activitySince }),
+                ...(query.activityUntil === undefined ? {} : { lte: query.activityUntil }),
+              },
+            }
+          : {}),
       };
+      if (query.resolvedSince !== undefined || query.resolvedUntil !== undefined) {
+        const resolutionTicketIds = await findRequesterResolvedTicketIds(
+          database as unknown as DashboardDatabase,
+          request.auth.user.id,
+          query.resolvedSince ?? new Date(0),
+          query.resolvedUntil ?? new Date(),
+        );
+        where.id = { in: resolutionTicketIds };
+        where.currentStatus = { in: ['RESOLVED', 'CLOSED'] };
+      }
       const orderBy: TicketListOrderBy[] = [
         { [query.sortBy]: query.sortOrder } as TicketListOrderBy,
         { id: 'desc' },
@@ -1337,6 +1571,7 @@ export function createApp(
       if (error instanceof TicketListValidationError) {
         response.status(400).json({
           error: 'Please correct the Ticket list query.',
+          code: 'VALIDATION_FAILED',
           fieldErrors: error.fieldErrors,
         });
         return;
@@ -1446,6 +1681,9 @@ export function createApp(
         data: {
           requesterResolvedAt: resolvedAt,
           requesterResolvedById: request.auth.user.id,
+          version: { increment: 1 },
+          lastStaffActivityAt: resolvedAt,
+          lastRequesterVisibleActivityAt: resolvedAt,
         },
       });
       response.status(200).json({
@@ -1508,6 +1746,8 @@ export function createApp(
           },
           createdAt: true,
           updatedAt: true,
+          version: true,
+          lastRequesterVisibleActivityAt: true,
         },
       });
       if (!ticket || ticket.requesterId !== request.auth.user.id) {
@@ -1546,11 +1786,29 @@ export function createApp(
           })
         : [];
 
+      const actionDatabase = database as unknown as ActionTakenApiDatabase;
+      const actionsTaken = actionDatabase.actionTaken?.findMany
+        ? await actionDatabase.actionTaken.findMany({
+            where: { ticketId },
+            orderBy: [{ actionAt: 'asc' }, { id: 'asc' }],
+            select: REQUESTER_ACTION_TAKEN_DETAIL_SELECT,
+          })
+        : [];
+      const statusHistory = database.ticketStatusHistory?.findMany
+        ? await database.ticketStatusHistory.findMany({
+            where: { ticketId },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            select: STAFF_TICKET_STATUS_HISTORY_SELECT,
+          })
+        : [];
+
       response.status(200).json({
         ticket: {
           ...serializeTicketDetail(ticket),
           attachments: attachments.map(serializeAttachment),
           publicComments: publicComments.map(serializePublicComment),
+          actionsTaken: actionsTaken.map((action) => serializeActionTaken(action, false)),
+          statusHistory: statusHistory.map(serializeTicketStatusHistoryEvent),
           requesterResolution: ticket.requesterResolvedAt && ticket.requesterResolvedBy
             ? {
                 resolvedAt: ticket.requesterResolvedAt,
@@ -1613,6 +1871,14 @@ export function createApp(
             summary: input.summary,
             description: input.description,
             requestedPriority: input.requestedPriority,
+            statusHistory: {
+              create: {
+                fromStatus: null,
+                toStatus: 'NEW',
+                actorId: authenticatedRequesterId,
+                eventKind: 'INITIAL',
+              },
+            },
           },
         });
         const ticketNumber = `TKT-${utcYear}-${String(createdTicket.id).padStart(6, '0')}`;

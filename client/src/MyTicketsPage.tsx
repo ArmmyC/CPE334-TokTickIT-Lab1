@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth-context';
 import { apiFetch, readJson } from './api';
 
@@ -17,9 +17,19 @@ type TicketListItem = {
   relatedSystem: ReferenceOption;
   requestedPriority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   itPriority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' | null;
-  currentStatus: 'NEW';
+  currentStatus: TicketStatus;
   updatedAt: string;
 };
+
+type TicketStatus =
+  | 'NEW'
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'WAITING_FOR_REQUESTER'
+  | 'RESOLVED'
+  | 'CLOSED'
+  | 'REOPENED'
+  | 'CANCELLED';
 
 type TicketListResponse = {
   items: TicketListItem[];
@@ -37,6 +47,11 @@ type TicketListFilters = {
   relatedSystemId: string;
   requestedPriority: string;
   currentStatus: string;
+  statusGroup: '' | 'ACTIVE' | 'RESOLVED';
+  activitySince: string;
+  activityUntil: string;
+  resolvedSince: string;
+  resolvedUntil: string;
   sortBy: 'ticketDate' | 'updatedAt' | 'ticketNumber';
   sortOrder: 'asc' | 'desc';
   pageSize: '10' | '20' | '50';
@@ -51,6 +66,11 @@ const DEFAULT_FILTERS: TicketListFilters = {
   relatedSystemId: '',
   requestedPriority: '',
   currentStatus: '',
+  statusGroup: '',
+  activitySince: '',
+  activityUntil: '',
+  resolvedSince: '',
+  resolvedUntil: '',
   sortBy: 'updatedAt',
   sortOrder: 'desc',
   pageSize: '10',
@@ -63,6 +83,33 @@ const priorityOptions = [
   ['HIGH', 'High'],
   ['URGENT', 'Urgent'],
 ] as const;
+
+const ticketStatusOptions: Array<[TicketStatus, string]> = [
+  ['NEW', 'New'],
+  ['OPEN', 'Open'],
+  ['IN_PROGRESS', 'In Progress'],
+  ['WAITING_FOR_REQUESTER', 'Waiting for Requester'],
+  ['RESOLVED', 'Resolved'],
+  ['CLOSED', 'Closed'],
+  ['REOPENED', 'Reopened'],
+  ['CANCELLED', 'Cancelled'],
+];
+const ticketStatuses = new Set(ticketStatusOptions.map(([value]) => value));
+
+function filtersFromSearch(search: string): TicketListFilters {
+  const parameters = new URLSearchParams(search);
+  const currentStatus = parameters.get('currentStatus') ?? '';
+  const statusGroup = parameters.get('statusGroup');
+  return {
+    ...DEFAULT_FILTERS,
+    currentStatus: ticketStatuses.has(currentStatus as TicketStatus) ? currentStatus : '',
+    statusGroup: statusGroup === 'ACTIVE' || statusGroup === 'RESOLVED' ? statusGroup : '',
+    activitySince: parameters.get('activitySince') ?? '',
+    activityUntil: parameters.get('activityUntil') ?? '',
+    resolvedSince: parameters.get('resolvedSince') ?? '',
+    resolvedUntil: parameters.get('resolvedUntil') ?? '',
+  };
+}
 
 function isReferenceOption(value: unknown): value is ReferenceOption {
   if (typeof value !== 'object' || value === null) {
@@ -86,7 +133,7 @@ function isTicketListItem(value: unknown): value is TicketListItem {
     isReferenceOption(candidate.relatedSystem) &&
     typeof candidate.requestedPriority === 'string' &&
     (candidate.itPriority === null || typeof candidate.itPriority === 'string') &&
-    candidate.currentStatus === 'NEW' &&
+    typeof candidate.currentStatus === 'string' && ticketStatuses.has(candidate.currentStatus as TicketStatus) &&
     typeof candidate.updatedAt === 'string'
   );
 }
@@ -140,15 +187,22 @@ function buildTicketListUrl(filters: TicketListFilters): string {
   appendQueryValue(parameters, 'relatedSystemId', filters.relatedSystemId);
   appendQueryValue(parameters, 'requestedPriority', filters.requestedPriority);
   appendQueryValue(parameters, 'currentStatus', filters.currentStatus);
+  appendQueryValue(parameters, 'statusGroup', filters.statusGroup);
+  appendQueryValue(parameters, 'activitySince', filters.activitySince);
+  appendQueryValue(parameters, 'activityUntil', filters.activityUntil);
+  appendQueryValue(parameters, 'resolvedSince', filters.resolvedSince);
+  appendQueryValue(parameters, 'resolvedUntil', filters.resolvedUntil);
   return `/api/tickets?${parameters.toString()}`;
 }
 
 export function MyTicketsPage() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<ReferenceOption[]>([]);
   const [relatedSystems, setRelatedSystems] = useState<ReferenceOption[]>([]);
   const [referenceState, setReferenceState] = useState<LoadState>('loading');
-  const [filters, setFilters] = useState<TicketListFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<TicketListFilters>(() => filtersFromSearch(location.search));
   const [listState, setListState] = useState<LoadState>('loading');
   const [list, setList] = useState<TicketListResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -241,17 +295,29 @@ export function MyTicketsPage() {
       filters.categoryId ||
       filters.relatedSystemId ||
       filters.requestedPriority ||
-      filters.currentStatus,
+      filters.currentStatus ||
+      filters.statusGroup ||
+      filters.activitySince ||
+      filters.activityUntil ||
+      filters.resolvedSince ||
+      filters.resolvedUntil,
     ),
     [filters],
   );
 
   const updateFilter = <K extends keyof TicketListFilters>(key: K, value: TicketListFilters[K]) => {
-    setFilters((current) => ({ ...current, [key]: value, page: 1 }));
+    setFilters((current) => ({
+      ...current,
+      [key]: value,
+      page: 1,
+      ...(key === 'currentStatus' && value ? { statusGroup: '' } : {}),
+      ...(key === 'statusGroup' && value ? { currentStatus: '' } : {}),
+    }));
   };
 
   const clearFilters = () => {
     setFilters({ ...DEFAULT_FILTERS });
+    navigate('/tickets', { replace: true });
   };
 
   const retry = () => {
@@ -267,6 +333,11 @@ export function MyTicketsPage() {
           <p className="text-secondary mb-0">
             Tickets owned by <strong>{user?.name}</strong>. This list is scoped to your authenticated account.
           </p>
+          {(filters.activitySince || filters.activityUntil || filters.resolvedSince || filters.resolvedUntil) && (
+            <p className="ticket-filter-context">
+              Dashboard time filter: {filters.activitySince || filters.resolvedSince || 'earliest available'} to {filters.activityUntil || filters.resolvedUntil || 'latest available'}.
+            </p>
+          )}
         </div>
         <Link className="btn btn-primary" to="/tickets/new">Create Ticket</Link>
       </div>
@@ -312,10 +383,18 @@ export function MyTicketsPage() {
             </select>
           </div>
           <div className="ticket-field">
+            <label htmlFor="ticket-status-group-filter">Ticket Status Group</label>
+            <select id="ticket-status-group-filter" value={filters.statusGroup} onChange={(event) => updateFilter('statusGroup', event.target.value as TicketListFilters['statusGroup'])}>
+              <option value="">All Groups</option>
+              <option value="ACTIVE">Open Tickets</option>
+              <option value="RESOLVED">Resolved or Closed</option>
+            </select>
+          </div>
+          <div className="ticket-field">
             <label htmlFor="ticket-status-filter">Current Status</label>
-            <select id="ticket-status-filter" value={filters.currentStatus} onChange={(event) => updateFilter('currentStatus', event.target.value)}>
+            <select id="ticket-status-filter" value={filters.currentStatus} onChange={(event) => updateFilter('currentStatus', event.target.value)} disabled={Boolean(filters.statusGroup)}>
               <option value="">All Statuses</option>
-              <option value="NEW">New</option>
+              {ticketStatusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </div>
           <div className="ticket-field">

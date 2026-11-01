@@ -271,7 +271,7 @@ describe('Lab 3 Staff Ticket Queue screen', () => {
   it('keeps the queue unavailable to Requester accounts', async () => {
     const fetchMock = await renderStaffQueue({ user: requesterUser });
 
-    expect(await screen.findByText(/IT Staff access is required/i)).toBeInTheDocument();
+    expect(await screen.findByText(/IT Staff or Administrator access is required/i)).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/staff/tickets'))).toBe(false);
   });
 });

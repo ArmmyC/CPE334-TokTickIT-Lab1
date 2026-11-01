@@ -146,7 +146,8 @@ describe('Lab 3 Administrator User Management screen', () => {
 
     expect(await screen.findByRole('heading', { name: 'User Management' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'User Management' })).toHaveAttribute('href', '/admin/users');
-    expect(screen.queryByRole('link', { name: 'Ticket Queue' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/staff/dashboard');
+    expect(screen.getByRole('link', { name: 'Ticket Queue' })).toHaveAttribute('href', '/staff/tickets');
     expect(screen.queryByRole('link', { name: 'My Tickets' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Create Ticket' })).not.toBeInTheDocument();
   });
